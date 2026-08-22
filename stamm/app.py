@@ -250,6 +250,10 @@ class App:
         except Exception as exc:
             return f'[Cannot display {part.get_content_type()}: {exc}]'
 
+    def forward(self, message: EmailMessage, rendered_body: str) -> None:
+        with tempfile.TemporaryDirectory(prefix='stamm-forward-') as workspace:
+            self.compose(compose.forward(message, rendered_body, self.config, Path(workspace)))
+
     def mark_deleted(self) -> None:
         if not self.view.rows:
             return
@@ -312,7 +316,7 @@ class App:
             elif key in ui.KEYS['reply_all']:
                 self.compose(compose.reply(message, body, self.config, all_recipients=True), replied_key=item.key)
             elif key in ui.KEYS['forward']:
-                self.compose(compose.forward(message, body, self.config))
+                self.forward(message, body)
 
     def show_opener_errors(self) -> None:
         errors = self.mime.reap()
@@ -539,7 +543,7 @@ class App:
                     )
                 elif key in ui.KEYS['forward'] and self.view.rows:
                     message = self._message()
-                    self.compose(compose.forward(message, self._render_body(message), self.config))
+                    self.forward(message, self._render_body(message))
                 elif key in ui.KEYS['delete'] and self.view.rows:
                     self.mark_deleted()
                 elif key in ui.KEYS['undelete'] and self.view.rows:

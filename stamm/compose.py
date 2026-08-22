@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import mimetypes
 import os
 import shlex
 import subprocess
@@ -12,7 +13,7 @@ from email.utils import getaddresses, parseaddr
 from pathlib import Path
 
 from .config import Config
-from .message import header_block, quote
+from .message import header_block, payload_bytes, quote
 
 HEADERS = ('From', 'To', 'Cc', 'Bcc', 'Subject')
 
@@ -197,12 +198,33 @@ def reply(message: Message, rendered_body: str, config: Config, *, all_recipient
     )
 
 
-def forward(message: Message, rendered_body: str, config: Config) -> ComposeData:
+def forward(message: Message, rendered_body: str, config: Config, workspace: Path) -> ComposeData:
     subject = str(message.get('Subject', ''))
     if not subject.lower().startswith('fwd:'):
         subject = 'Fwd: ' + subject
+
+    attachments: list[Attachment] = []
+    counter = 0
+    for part in message.walk():
+        if part.is_multipart():
+            continue
+        disposition = part.get_content_disposition()
+        filename = part.get_filename()
+        if disposition is None and filename is None and part.get_content_type() in ('text/plain', 'text/html'):
+            continue
+        counter += 1
+        if filename:
+            safe_filename = Path(filename).name
+        else:
+            extension = mimetypes.guess_extension(part.get_content_type()) or ''
+            safe_filename = f'attachment-{counter}{extension}'
+        path = workspace / f'{counter}-{safe_filename}'
+        path.write_bytes(payload_bytes(part))
+        attachments.append(Attachment(path, safe_filename))
+
     return ComposeData(
         config.identities[0],
         subject=subject,
+        attachments=attachments,
         body='\n---------- Forwarded message ----------\n' + header_block(message) + '\n\n' + rendered_body,
     )

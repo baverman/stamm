@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+from email.message import EmailMessage
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -80,6 +81,22 @@ def test_editor_returns_changed_buffer_without_forcing_validation(
     assert changed
     assert data.body == 'changed'
     assert compose.validate(data) == ['at least one recipient is required']
+
+
+def test_forward_preserves_attachments_and_non_body_mime_parts(config: Config, tmp_path: Path) -> None:
+    message = EmailMessage()
+    message['From'] = 'author@example.com'
+    message['Subject'] = 'report'
+    message.set_content('plain body')
+    message.add_related(b'png-data', maintype='image', subtype='png', cid='<chart>')
+    message.add_attachment(b'pdf-data', maintype='application', subtype='pdf', filename='report.pdf')
+
+    data = compose.forward(message, 'rendered body', config, tmp_path)
+
+    assert data.subject == 'Fwd: report'
+    assert [attachment.filename for attachment in data.attachments] == ['attachment-1.png', 'report.pdf']
+    assert [attachment.path.read_bytes() for attachment in data.attachments] == [b'png-data', b'pdf-data']
+    assert 'rendered body' in data.body
 
 
 def test_successful_reply_sets_maildir_replied_flag(config: Config, monkeypatch: pytest.MonkeyPatch) -> None:
