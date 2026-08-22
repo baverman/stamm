@@ -139,7 +139,8 @@ class MimeManager:
         errors: list[str] = []
         for entry in self._temporary:
             status = entry.process.poll()
-            if status is None:
+            if status in (None, 0):
+                # Delegating openers can exit before the receiving application reads the file.
                 active.append(entry)
                 continue
             if status:

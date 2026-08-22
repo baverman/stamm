@@ -58,3 +58,23 @@ def test_one_out_file_captures_stdout_and_stderr() -> None:
     assert 'exit status: 7' in errors[0]
     assert 'output:\nstdoutstderr' in errors[0]
     assert not Path(directory.name).exists()
+
+
+
+def test_successful_opener_keeps_temporary_file_until_manager_closes() -> None:
+    manager = MimeManager(config())
+    directory = tempfile.TemporaryDirectory(prefix='stamm-test-open-')
+    source = Path(directory.name) / 'part.html'
+    output = Path(directory.name) / 'out'
+    source.write_text('<p>content</p>', encoding='utf-8')
+    with output.open('wb') as out:
+        process = manager._run('true', b'', source, detached=True, output=out)
+    assert isinstance(process, subprocess.Popen)
+    process.wait(timeout=5)
+    manager._temporary.append(_OpenProcess(directory, process, output, 'test opener'))
+
+    assert manager.reap() == []
+    assert source.exists()
+
+    manager.close()
+    assert not Path(directory.name).exists()
