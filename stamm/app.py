@@ -119,7 +119,8 @@ class App:
         for y, row in enumerate(self.state.rows[start : start + visible], 1):
             item = row.message
             marked = item.key in deleted
-            flags = ('D' if marked else ('N' if 'S' not in item.flags else ' ')) + ('F' if 'F' in item.flags else ' ')
+            status_flag = 'D' if marked else ('r' if 'R' in item.flags else ('N' if 'S' not in item.flags else ' '))
+            flags = status_flag + ('F' if 'F' in item.flags else ' ')
             sender = ui.format_sender(item.sender)[:20]
             subject = '  ' * row.depth + item.subject.replace('\n', ' ')
             date = ui.format_index_date(item.timestamp)
@@ -204,9 +205,9 @@ class App:
             if key in ui.KEYS['parts']:
                 self.parts_view(message)
             elif key in ui.KEYS['reply']:
-                self.compose(compose.reply(message, body, self.config))
+                self.compose(compose.reply(message, body, self.config), replied_key=item.key)
             elif key in ui.KEYS['reply_all']:
-                self.compose(compose.reply(message, body, self.config, all_recipients=True))
+                self.compose(compose.reply(message, body, self.config, all_recipients=True), replied_key=item.key)
             elif key in ui.KEYS['forward']:
                 self.compose(compose.forward(message, body, self.config))
 
@@ -257,7 +258,12 @@ class App:
                     except OSError as exc:
                         self.notice = str(exc)
 
-    def compose(self, initial: compose.ComposeData, old_draft: Path | None = None) -> None:
+    def compose(
+        self,
+        initial: compose.ComposeData,
+        old_draft: Path | None = None,
+        replied_key: str | None = None,
+    ) -> None:
         data = initial
         edited = False
         errors: list[str] | None = None
@@ -302,6 +308,12 @@ class App:
                 else:
                     delivery.send(data, self.config)
                     self.notice = 'message sent'
+                    if replied_key:
+                        try:
+                            self.state.index.set_flags(replied_key, add='R')
+                            self.state.reload_cached()
+                        except (OSError, KeyError) as flag_exc:
+                            self.notice = f'message sent; cannot mark replied: {flag_exc}'
                 if old_draft:
                     old_draft.unlink(missing_ok=True)
                 return
@@ -378,10 +390,16 @@ class App:
                     self.parts_view(self._message())
                 elif key in ui.KEYS['reply'] and self.state.rows:
                     message = self._message()
-                    self.compose(compose.reply(message, self._render_body(message), self.config))
+                    self.compose(
+                        compose.reply(message, self._render_body(message), self.config),
+                        replied_key=self.state.selected_message.key,
+                    )
                 elif key in ui.KEYS['reply_all'] and self.state.rows:
                     message = self._message()
-                    self.compose(compose.reply(message, self._render_body(message), self.config, all_recipients=True))
+                    self.compose(
+                        compose.reply(message, self._render_body(message), self.config, all_recipients=True),
+                        replied_key=self.state.selected_message.key,
+                    )
                 elif key in ui.KEYS['forward'] and self.state.rows:
                     message = self._message()
                     self.compose(compose.forward(message, self._render_body(message), self.config))

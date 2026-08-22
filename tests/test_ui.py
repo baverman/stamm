@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import curses
-
 from datetime import datetime
 
 import pytest
@@ -91,16 +90,17 @@ class _ChoiceWindow:
         ('e', 'e'),
     ],
 )
-def test_choose_maps_generic_and_explicit_keys(
-    key: str | int, expected: str, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_choose_maps_generic_and_explicit_keys(key: str | int, expected: str, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ui, 'status', lambda *_args: None)
 
-    assert ui.choose(
-        _ChoiceWindow(key),  # type: ignore[arg-type]
-        'Compose',
-        'sedx',
-        0,
-        primary='s',
-        cancel='x',
-    ) == expected
+    assert (
+        ui.choose(
+            _ChoiceWindow(key),  # type: ignore[arg-type]
+            'Compose',
+            'sedx',
+            0,
+            primary='s',
+            cancel='x',
+        )
+        == expected
+    )

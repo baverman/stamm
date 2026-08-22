@@ -117,9 +117,7 @@ def validate(data: ComposeData) -> list[str]:
     return errors
 
 
-def edit(
-    config: Config, initial: ComposeData, errors: list[str] | None = None
-) -> tuple[ComposeData, bool]:
+def edit(config: Config, initial: ComposeData, errors: list[str] | None = None) -> tuple[ComposeData, bool]:
     """Run the configured editor once and report whether its buffer changed."""
     content = format_buffer(initial)
     if errors:
