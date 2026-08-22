@@ -14,7 +14,7 @@ class DeliveryTests(unittest.TestCase):
     def setUp(self) -> None:
         self.config = Config(
             root=Path("/tmp"), spool=Path("/tmp/inbox"), sent=Path("/tmp/sent"),
-            drafts=Path("/tmp/drafts"), editor="true", sendmail="sendmail --mode test",
+            drafts=Path("/tmp/drafts"), trash=Path("/tmp/trash"), editor="true", sendmail="sendmail --mode test",
             identities=("Sender <sender@example.com>",),
         )
 

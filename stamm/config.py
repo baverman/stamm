@@ -31,6 +31,7 @@ class Config:
     spool: Path
     sent: Path
     drafts: Path
+    trash: Path
     editor: str
     sendmail: str
     identities: tuple[str, ...]
@@ -121,6 +122,7 @@ def load_config(path: Path | None = None) -> Config:
         spool=required_path("spool"),
         sent=required_path("sent"),
         drafts=required_path("drafts"),
+        trash=required_path("trash"),
         editor=editor,
         sendmail=sendmail,
         identities=identities,

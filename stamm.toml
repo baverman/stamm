@@ -1,7 +1,8 @@
 root = "~/mail"
 spool = "inbox"
 sent = "sent-local"
-drafts = "drafts"
+drafts = "draft"
+trash = "trash"
 editor = "vim"
 sendmail = "python3 -m norless.sendmail"
 identities = ["Anton Bobrov <baverman@gmail.com>"]

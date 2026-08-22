@@ -131,3 +131,16 @@ class MessageIndex:
         with self.connection:
             self.connection.execute("UPDATE messages SET path=?, flags=? WHERE key=?", (path, flags, key))
         return replace(item, path=path, flags=flags)
+
+
+    def move_to(self, key: str, destination: Path) -> Path:
+        """Move an indexed message to another Maildir and remove its record."""
+        if self.maildir.resolve() == destination.resolve():
+            raise ValueError("message is already in the destination Maildir")
+        item = self.get(key)
+        if item is None:
+            raise KeyError(key)
+        target = maildir.move(self.maildir, item.path, destination)
+        with self.connection:
+            self.connection.execute("DELETE FROM messages WHERE key = ?", (key,))
+        return target

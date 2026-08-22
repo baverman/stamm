@@ -17,7 +17,7 @@ KEYS = {
     "change": (ord("c"),), "compose": (ord("m"),), "reply": (ord("r"),),
     "reply_all": (ord("g"),), "forward": (ord("f"),), "flag": (ord("F"),),
     "unread": (ord("N"),), "parts": (ord("v"),), "resume": (ord("e"),),
-    "refresh": (ord("R"),), "save": (ord("s"),),
+    "refresh": (ord("R"),), "save": (ord("s"),), "delete": (ord("d"),), "undelete": (ord("u"),),
 }
 
 MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")

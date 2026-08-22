@@ -28,7 +28,7 @@ The MVP includes:
 - Maildir-local SQLite indexes.
 - Read/unread and flagged state changes.
 
-Delete, move, and copy are excluded. They need a separate interaction design.
+Move and copy are excluded. Delete immediately moves a message to the configured Trash Maildir.
 
 ## Command-line behavior
 
@@ -56,6 +56,7 @@ root = "~/mail"
 spool = "inbox"
 sent = "sent-local"
 drafts = "drafts"
+trash = "trash"
 editor = "vim"
 sendmail = "python3 -m norless.sendmail"
 identities = ["Name <user@example.com>", "Name <work@example.com>"]
@@ -83,7 +84,7 @@ Configuration rules:
 - Parse `sendmail` with `shlex.split()`, append `-f`, the envelope sender, and recipient arguments, then execute the argument list without a shell.
 - `identities` must contain at least one address. Its first entry supplies `From:` for new messages.
 - `root` must resolve to an absolute path after `~` and environment-variable expansion. It is the initial directory for Maildir path completion, but users can enter paths outside it.
-- All other path-valued settings, including `spool`, `sent`, `drafts`, and signature files, can be absolute or relative to `root`.
+- All other path-valued settings, including `spool`, `sent`, `drafts`, `trash`, and signature files, can be absolute or relative to `root`.
 - The folder prompt shows all directories and does not validate them as Maildirs.
 - MIME rules are matched in the order stated in the configuration.
 - MIME commands are trusted shell command strings.
@@ -184,6 +185,7 @@ Core actions include:
 - `g`: reply all.
 - `f`: forward inline.
 - `F`: toggle flagged state.
+- `d`: from the index, move the selected message to the configured Trash Maildir without confirmation.
 - `N`: mark unread.
 - `v`: open the MIME-part view.
 - `e`: resume the selected message when viewing the configured Drafts Maildir.

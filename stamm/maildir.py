@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import errno
 import os
 from pathlib import Path
 import secrets
+import shutil
 import socket
 import time
 
@@ -60,6 +62,36 @@ def rename_flags(maildir: Path, relative_path: str, add: str = "", remove: str =
 
 def _unique_name() -> str:
     return f"{time.time_ns()}.{os.getpid()}_{secrets.token_hex(6)}.{socket.gethostname()}"
+
+
+def move(source_maildir: Path, relative_path: str, destination_maildir: Path) -> Path:
+    """Move one message to another Maildir, including across filesystems."""
+    ensure_maildir(destination_maildir)
+    source = source_maildir / relative_path
+    subdirectory = source.parent.name
+    if subdirectory not in ("new", "cur"):
+        raise ValueError(f"invalid indexed Maildir path: {relative_path}")
+    target = destination_maildir / subdirectory / source.name
+    if target.exists():
+        _, flags = split_name(source.name)
+        suffix = f":2,{flags}" if ":2," in source.name else ""
+        target = destination_maildir / subdirectory / f"{_unique_name()}{suffix}"
+    try:
+        os.rename(source, target)
+    except OSError as exc:
+        if exc.errno != errno.EXDEV:
+            raise
+        temporary = destination_maildir / "tmp" / _unique_name()
+        try:
+            with source.open("rb") as input_stream, temporary.open("xb") as output_stream:
+                shutil.copyfileobj(input_stream, output_stream)
+                output_stream.flush()
+                os.fsync(output_stream.fileno())
+            os.replace(temporary, target)
+            source.unlink()
+        finally:
+            temporary.unlink(missing_ok=True)
+    return target
 
 
 def store(maildir: Path, content: bytes, *, flags: str = "", seen: bool = False) -> Path:

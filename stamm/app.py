@@ -27,6 +27,7 @@ class App:
         self.index_offset = 0
         self.notice = ""
         self.mime = MimeManager(config)
+        self.pending_delete: dict[Path, set[str]] = {}
 
     def open_maildir(self, path: Path) -> None:
         candidate = MessageIndex(path)
@@ -68,7 +69,8 @@ class App:
         start = self.index_offset
         for y, row in enumerate(self.rows[start:start + visible], 1):
             item = row.message
-            flags = ("N" if "S" not in item.flags else " ") + ("F" if "F" in item.flags else " ")
+            marked = item.key in self.pending_delete.get(self.maildir.resolve(), set())
+            flags = ("D" if marked else ("N" if "S" not in item.flags else " ")) + ("F" if "F" in item.flags else " ")
             sender = ui.format_sender(item.sender)[:20]
             subject = "  " * row.depth + item.subject.replace("\n", " ")
             date = ui.format_index_date(item.timestamp)
@@ -97,6 +99,73 @@ class App:
             return self.mime.display(part)
         except Exception as exc:
             return f"[Cannot display {part.get_content_type()}: {exc}]"
+
+    def mark_deleted(self) -> None:
+        if not self.rows:
+            return
+        folder = self.maildir.resolve()
+        if folder == self.config.trash.resolve():
+            self.notice = "messages in Trash cannot be marked for deletion"
+            return
+        key = self.rows[self.selected].message.key
+        self.pending_delete.setdefault(folder, set()).add(key)
+        self.notice = "marked for deletion"
+        self.selected = min(len(self.rows) - 1, self.selected + 1)
+
+    def unmark_deleted(self) -> None:
+        if not self.rows:
+            return
+        folder = self.maildir.resolve()
+        keys = self.pending_delete.get(folder)
+        if keys:
+            keys.discard(self.rows[self.selected].message.key)
+            if not keys:
+                self.pending_delete.pop(folder, None)
+        self.notice = "deletion mark removed"
+        self.selected = min(len(self.rows) - 1, self.selected + 1)
+
+    def purge_deleted(self) -> list[str]:
+        """Move all marked messages to Trash and return failures."""
+        errors: list[str] = []
+        current_folder = self.maildir.resolve()
+        current_position = self.selected
+        for folder, keys in list(self.pending_delete.items()):
+            index = self.index if folder == current_folder else None
+            owned_index = index is None
+            try:
+                if index is None:
+                    index = MessageIndex(folder)
+                for key in list(keys):
+                    try:
+                        if index.get(key) is not None:
+                            index.move_to(key, self.config.trash)
+                        keys.discard(key)
+                    except (OSError, ValueError) as exc:
+                        errors.append(f"{folder}: {exc}")
+            except OSError as exc:
+                errors.append(f"{folder}: {exc}")
+            finally:
+                if owned_index and index is not None:
+                    index.close()
+            if not keys:
+                self.pending_delete.pop(folder, None)
+        if self.index and current_folder == self.maildir.resolve():
+            self.rows = build_threads(self.index.messages())
+            self.selected = min(current_position, max(0, len(self.rows) - 1))
+        return errors
+
+    def confirm_exit(self) -> bool:
+        count = sum(len(keys) for keys in self.pending_delete.values())
+        if not count:
+            return True
+        answer = ui.choose(self.screen, f"Move {count} deleted message(s) to Trash?", "yn")
+        if answer == "n":
+            return True
+        errors = self.purge_deleted()
+        if errors:
+            ui.pager(self.screen, "Cannot move deleted messages", "\n".join(errors))
+            return False
+        return True
 
     def message_view(self) -> None:
         assert self.index
@@ -223,7 +292,9 @@ class App:
                 self.draw_index()
                 key = self.screen.getch()
                 if key in ui.KEYS["back"]:
-                    return
+                    if self.confirm_exit():
+                        return
+                    continue
                 if key in ui.KEYS["down"] and self.rows:
                     self.selected = min(len(self.rows) - 1, self.selected + 1)
                 elif key in ui.KEYS["up"] and self.rows:
@@ -253,6 +324,10 @@ class App:
                 elif key in ui.KEYS["forward"] and self.rows:
                     message = self._message()
                     self.compose(compose.forward(message, self._render_body(message), self.config))
+                elif key in ui.KEYS["delete"] and self.rows:
+                    self.mark_deleted()
+                elif key in ui.KEYS["undelete"] and self.rows:
+                    self.unmark_deleted()
                 elif key in ui.KEYS["flag"] and self.rows:
                     item = self.rows[self.selected].message
                     self.index.set_flags(item.key, remove="F" if "F" in item.flags else "", add="" if "F" in item.flags else "F")  # type: ignore[union-attr]

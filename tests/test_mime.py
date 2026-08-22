@@ -13,7 +13,7 @@ class MimeOpenerTests(unittest.TestCase):
     def config(self, rules: tuple[MimeRule, ...] = ()) -> Config:
         return Config(
             root=Path("/tmp"), spool=Path("/tmp/inbox"), sent=Path("/tmp/sent"),
-            drafts=Path("/tmp/drafts"), editor="true", sendmail="true",
+            drafts=Path("/tmp/drafts"), trash=Path("/tmp/trash"), editor="true", sendmail="true",
             identities=("sender@example.com",), mime=rules,
         )
 
