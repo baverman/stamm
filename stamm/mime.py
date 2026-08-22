@@ -69,6 +69,7 @@ class MimeManager:
         detached: bool = False,
         output: BinaryIO | None = None,
     ) -> subprocess.Popen[bytes] | subprocess.CompletedProcess[bytes]:
+        stdin: int | BinaryIO
         if "{file}" in command:
             if temporary is None:
                 raise ValueError("command requires a file")
@@ -77,7 +78,7 @@ class MimeManager:
         else:
             rendered, stdin = command, subprocess.PIPE
         if detached:
-            input_file = None
+            input_file: BinaryIO | None = None
             if stdin == subprocess.PIPE:
                 input_file = tempfile.TemporaryFile()
                 input_file.write(content)

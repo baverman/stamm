@@ -57,7 +57,7 @@ def build_message(data: ComposeData, config: Config, *, signing: bool = False, i
     return message
 
 
-def message_bytes(message: Message) -> bytes:
+def message_bytes(message: EmailMessage) -> bytes:
     stream = io.BytesIO()
     BytesGenerator(stream, policy=policy.default).flatten(message)
     return stream.getvalue()

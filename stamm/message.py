@@ -12,7 +12,7 @@ from .config import Config
 
 def parse_message(path: Path) -> EmailMessage:
     with path.open("rb") as stream:
-        return BytesParser(policy=policy.default).parse(stream)  # type: ignore[return-value]
+        return BytesParser(policy=policy.default).parse(stream)
 
 
 def payload_bytes(part: Message) -> bytes:
@@ -24,9 +24,13 @@ def payload_bytes(part: Message) -> bytes:
 
 def payload_text(part: Message) -> str:
     try:
-        return part.get_content()  # type: ignore[no-any-return]
+        if isinstance(part, EmailMessage):
+            content = part.get_content()
+            if isinstance(content, str):
+                return content
     except (LookupError, UnicodeError, AttributeError):
-        return payload_bytes(part).decode(part.get_content_charset() or "utf-8", errors="replace")
+        pass
+    return payload_bytes(part).decode(part.get_content_charset() or "utf-8", errors="replace")
 
 
 def select_body(message: Message, config: Config) -> Message | None:

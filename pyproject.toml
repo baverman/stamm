@@ -14,3 +14,9 @@ stamm = "stamm.__main__:main"
 
 [tool.setuptools.packages.find]
 include = ["stamm*"]
+
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["stamm"]
