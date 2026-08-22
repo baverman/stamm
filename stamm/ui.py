@@ -6,11 +6,12 @@ import curses
 import os
 import time
 import unicodedata
+from dataclasses import dataclass
 from datetime import datetime
 from email.utils import parseaddr
 from pathlib import Path
 
-from .config import ColorConfig, ColorValue
+from .config_model import ColorConfig, ColorStyle
 
 KEYS = {
     'down': (ord('j'), curses.KEY_DOWN),
@@ -33,16 +34,6 @@ KEYS = {
 }
 
 MONTHS = ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')
-COLOR_ROLES = (
-    'normal',
-    'header',
-    'status',
-    'indicator',
-    'index_date',
-    'index_flags',
-    'index_sender',
-    'index_subject',
-)
 COLOR_INDEXES = {
     'black': 0,
     'red': 1,
@@ -68,14 +59,24 @@ COLOR_ATTRIBUTES = {
     'underline': curses.A_UNDERLINE,
     'standout': curses.A_STANDOUT,
 }
-_default_color_attr = 0
-_role_attrs: dict[str, int] = {role: 0 for role in COLOR_ROLES}
 
 
-def _color_index(value: ColorValue) -> int:
+@dataclass(frozen=True, slots=True)
+class CursesTheme:
+    normal: int
+    header: int
+    status: int
+    indicator: int
+    index_date: int
+    index_flags: int
+    index_sender: int
+    index_subject: int
+
+
+def _color_index(value: str) -> int:
     if value == 'default':
         return -1
-    index = COLOR_INDEXES[value] if isinstance(value, str) else value
+    index = int(value) if value.isdecimal() else COLOR_INDEXES[value]
     if index >= curses.COLORS:
         raise RuntimeError(f'terminal supports {curses.COLORS} colors, but color index {index} was requested')
     return index
@@ -88,57 +89,55 @@ def _attributes(names: tuple[str, ...]) -> int:
     return result
 
 
-def initialize_colors(window: curses.window, colors: ColorConfig) -> None:
-    """Initialize configured terminal colors and role attributes."""
-    global _default_color_attr, _role_attrs
-    _role_attrs = {role: _attributes(colors.resolved(role).attrs) for role in COLOR_ROLES}
-    if not curses.has_colors():
-        _default_color_attr = _role_attrs['normal']
-        return
-    try:
-        curses.start_color()
-        curses.use_default_colors()
-        pairs: dict[tuple[int, int], int] = {}
-        next_pair = 1
-        for role in COLOR_ROLES:
-            style = colors.resolved(role)
-            assert style.fg is not None and style.bg is not None
-            foreground = _color_index(style.fg)
-            background = _color_index(style.bg)
-            colors_key = (foreground, background)
-            pair = pairs.get(colors_key)
-            if pair is None:
-                if next_pair >= curses.COLOR_PAIRS:
-                    raise RuntimeError('terminal does not provide enough color pairs for the configured roles')
-                pair = next_pair
-                next_pair += 1
+def initialize_colors(window: curses.window, colors: ColorConfig) -> CursesTheme:
+    """Allocate curses color pairs and return their final attributes."""
+    normal = colors.normal or ColorStyle('default', 'default', ())
+    normal_fg = 'default' if normal.fg is None else normal.fg
+    normal_bg = 'default' if normal.bg is None else normal.bg
+    pairs: dict[tuple[int, int], int] = {}
+    next_pair = 1
+    has_colors = curses.has_colors()
+    if has_colors:
+        try:
+            curses.start_color()
+            curses.use_default_colors()
+        except curses.error as exc:
+            raise RuntimeError(f'cannot initialize terminal colors: {exc}') from exc
+
+    def attr(style: ColorStyle | None) -> int:
+        nonlocal next_pair
+        style = style or ColorStyle(None, None, ())
+        result = _attributes(style.attrs)
+        if not has_colors:
+            return result
+        foreground = _color_index(normal_fg if style.fg is None else style.fg)
+        background = _color_index(normal_bg if style.bg is None else style.bg)
+        colors_key = (foreground, background)
+        pair = pairs.get(colors_key)
+        if pair is None:
+            if next_pair >= curses.COLOR_PAIRS:
+                raise RuntimeError('terminal does not provide enough color pairs for the configured roles')
+            pair = next_pair
+            next_pair += 1
+            try:
                 curses.init_pair(pair, foreground, background)
-                pairs[colors_key] = pair
-            _role_attrs[role] |= curses.color_pair(pair)
-    except curses.error as exc:
-        raise RuntimeError(f'cannot initialize terminal colors: {exc}') from exc
-    _default_color_attr = _role_attrs['normal']
-    window.bkgd(' ', _default_color_attr)
+            except curses.error as exc:
+                raise RuntimeError(f'cannot initialize terminal colors: {exc}') from exc
+            pairs[colors_key] = pair
+        return result | curses.color_pair(pair)
 
-
-def role_color(role: str) -> int:
-    return _role_attrs.get(role, _default_color_attr)
-
-
-def index_date_color() -> int:
-    return role_color('index_date')
-
-
-def index_flags_color() -> int:
-    return role_color('index_flags')
-
-
-def index_indicator_color() -> int:
-    return role_color('indicator')
-
-
-def index_sender_color() -> int:
-    return role_color('index_sender')
+    theme = CursesTheme(
+        normal=attr(normal),
+        header=attr(colors.header),
+        status=attr(colors.status),
+        indicator=attr(colors.indicator),
+        index_date=attr(colors.index_date),
+        index_flags=attr(colors.index_flags),
+        index_sender=attr(colors.index_sender),
+        index_subject=attr(colors.index_subject),
+    )
+    window.bkgd(' ', theme.normal)
+    return theme
 
 
 def format_index_date(timestamp: float, now: float | None = None) -> str:
@@ -203,30 +202,36 @@ def wrap_text(text: str, columns: int) -> list[str]:
 def put(window: curses.window, y: int, x: int, text: str, width: int, attr: int = 0) -> None:
     if width > 0:
         try:
-            color = _default_color_attr if curses.pair_number(attr) == 0 else 0
-            window.addnstr(y, x, text, width, attr | color)
+            window.addnstr(y, x, text, width, attr)
         except curses.error:
             pass
 
 
-def status(window: curses.window, text: str) -> None:
+def status(window: curses.window, text: str, attr: int) -> None:
     height, width = window.getmaxyx()
-    put(window, height - 1, 0, text.ljust(width), width, role_color('status'))
+    put(window, height - 1, 0, text.ljust(width), width, attr)
     window.refresh()
 
 
-def choose(window: curses.window, prompt_text: str, choices: str) -> str:
-    status(window, f'{prompt_text} [{"/".join(choices)}]')
+def choose(window: curses.window, prompt_text: str, choices: str, status_attr: int) -> str:
+    status(window, f'{prompt_text} [{"/".join(choices)}]', status_attr)
     while True:
         key = window.get_wch()
         if isinstance(key, str) and key in choices:
             return key
 
 
-def prompt(window: curses.window, label: str, initial: str = '', *, complete_paths: bool = False) -> str | None:
+def prompt(
+    window: curses.window,
+    label: str,
+    initial: str = '',
+    *,
+    complete_paths: bool = False,
+    status_attr: int,
+) -> str | None:
     value = initial
     while True:
-        status(window, label + value)
+        status(window, label + value, status_attr)
         key = window.get_wch()
         if key in ('\n', '\r'):
             return os.path.expandvars(os.path.expanduser(value))
@@ -250,7 +255,7 @@ def prompt(window: curses.window, label: str, initial: str = '', *, complete_pat
             value += key
 
 
-def pager(window: curses.window, title: str, text: str) -> int:
+def pager(window: curses.window, title: str, text: str, header_attr: int) -> int:
     """Display text and return the first key that is not a scroll command."""
     offset = 0
     while True:
@@ -259,7 +264,7 @@ def pager(window: curses.window, title: str, text: str) -> int:
         lines = wrap_text(text, width - 1)
         maximum = max(0, len(lines) - height + 1)
         offset = min(offset, maximum)
-        put(window, 0, 0, title.ljust(width), width, role_color('header'))
+        put(window, 0, 0, title.ljust(width), width, header_attr)
         for row, line in enumerate(lines[offset : offset + height - 1], 1):
             put(window, row, 0, line, width - 1)
         window.refresh()

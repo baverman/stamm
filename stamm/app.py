@@ -16,7 +16,7 @@ from .threads import ThreadRow, build_threads
 
 
 class App:
-    def __init__(self, screen: curses.window, config: Config, maildir: Path):
+    def __init__(self, screen: curses.window, config: Config, maildir: Path, theme: ui.CursesTheme):
         self.screen = screen
         self.config = config
         self.maildir = maildir
@@ -27,6 +27,7 @@ class App:
         self.notice = ''
         self.mime = MimeManager(config)
         self.pending_delete: dict[Path, set[str]] = {}
+        self.theme = theme
 
     def open_maildir(self, path: Path) -> None:
         candidate = MessageIndex(path)
@@ -60,29 +61,36 @@ class App:
     def draw_index(self) -> None:
         self.screen.erase()
         height, width = self.screen.getmaxyx()
-        ui.put(self.screen, 0, 0, f'Stamm — {self.maildir}'.ljust(width), width, ui.role_color('header'))
+        theme = self.theme
+        ui.put(self.screen, 0, 0, f'Stamm — {self.maildir}'.ljust(width), width, theme.header)
         visible = max(1, height - 2)
         self.index_offset = ui.viewport_start(self.selected, len(self.rows), visible, self.index_offset)
         start = self.index_offset
+        deleted = self.pending_delete.get(self.maildir.resolve(), set())
+        date_attr = theme.index_date
+        flags_attr = theme.index_flags
+        sender_attr = theme.index_sender
+        subject_attr = theme.index_subject
+        indicator_attr = theme.indicator
         for y, row in enumerate(self.rows[start : start + visible], 1):
             item = row.message
-            marked = item.key in self.pending_delete.get(self.maildir.resolve(), set())
+            marked = item.key in deleted
             flags = ('D' if marked else ('N' if 'S' not in item.flags else ' ')) + ('F' if 'F' in item.flags else ' ')
             sender = ui.format_sender(item.sender)[:20]
             subject = '  ' * row.depth + item.subject.replace('\n', ' ')
             date = ui.format_index_date(item.timestamp)
             line = f'{date} {flags:2} {sender:20}  {subject}'
             selected = start + y - 1 == self.selected
-            attr = ui.index_indicator_color() if selected else 0
+            attr = indicator_attr if selected else 0
             ui.put(self.screen, y, 0, line.ljust(width), width, attr)
             if not selected:
-                ui.put(self.screen, y, 0, date, 12, ui.index_date_color())
-                ui.put(self.screen, y, 13, flags, 2, ui.index_flags_color())
-                ui.put(self.screen, y, 16, sender, 20, ui.index_sender_color())
-                ui.put(self.screen, y, 38, subject, max(0, width - 38), ui.role_color('index_subject'))
+                ui.put(self.screen, y, 0, date, 12, date_attr)
+                ui.put(self.screen, y, 13, flags, 2, flags_attr)
+                ui.put(self.screen, y, 16, sender, 20, sender_attr)
+                ui.put(self.screen, y, 38, subject, max(0, width - 38), subject_attr)
         count = len(self.rows)
         summary = f' {count} {"message" if count == 1 else "messages"}'
-        ui.status(self.screen, self.notice or summary)
+        ui.status(self.screen, self.notice or summary, theme.status)
         self.notice = ''
 
     def _message(self) -> EmailMessage:
@@ -156,12 +164,12 @@ class App:
         count = sum(len(keys) for keys in self.pending_delete.values())
         if not count:
             return True
-        answer = ui.choose(self.screen, f'Move {count} deleted message(s) to Trash?', 'yn')
+        answer = ui.choose(self.screen, f'Move {count} deleted message(s) to Trash?', 'yn', self.theme.status)
         if answer == 'n':
             return True
         errors = self.purge_deleted()
         if errors:
-            ui.pager(self.screen, 'Cannot move deleted messages', '\n'.join(errors))
+            ui.pager(self.screen, 'Cannot move deleted messages', '\n'.join(errors), self.theme.header)
             return False
         return True
 
@@ -175,7 +183,7 @@ class App:
         message = self._message()
         body = self._render_body(message)
         while True:
-            key = ui.pager(self.screen, item.subject, header_block(message) + '\n\n' + body)
+            key = ui.pager(self.screen, item.subject, header_block(message) + '\n\n' + body, self.theme.header)
             if key in ui.KEYS['back']:
                 return
             if key in ui.KEYS['parts']:
@@ -190,7 +198,7 @@ class App:
     def show_opener_errors(self) -> None:
         errors = self.mime.reap()
         if errors:
-            ui.pager(self.screen, 'External opener failed', '\n\n'.join(errors))
+            ui.pager(self.screen, 'External opener failed', '\n\n'.join(errors), self.theme.header)
 
     def parts_view(self, message: EmailMessage) -> None:
         rows = part_rows(message)
@@ -199,11 +207,11 @@ class App:
             self.show_opener_errors()
             self.screen.erase()
             height, width = self.screen.getmaxyx()
-            ui.put(self.screen, 0, 0, ' MIME parts '.ljust(width), width, ui.role_color('header'))
+            ui.put(self.screen, 0, 0, ' MIME parts '.ljust(width), width, self.theme.header)
             visible = max(1, height - 1)
             start = min(max(0, selected - visible + 1), selected)
             for index, row in enumerate(rows[start : start + visible], 1):
-                attr = ui.index_indicator_color() if start + index - 1 == selected else 0
+                attr = self.theme.indicator if start + index - 1 == selected else 0
                 ui.put(self.screen, index, 0, '  ' * row.depth + row.label, width, attr)
             self.screen.refresh()
             key = self.screen.getch()
@@ -221,7 +229,11 @@ class App:
                     self.notice = str(exc)
             elif key in ui.KEYS['save'] and not rows[selected].part.is_multipart():
                 value = ui.prompt(
-                    self.screen, 'Save to: ', rows[selected].part.get_filename() or '', complete_paths=True
+                    self.screen,
+                    'Save to: ',
+                    rows[selected].part.get_filename() or '',
+                    complete_paths=True,
+                    status_attr=self.theme.status,
                 )
                 if value:
                     try:
@@ -240,7 +252,7 @@ class App:
             finally:
                 curses.reset_prog_mode()
                 self.screen.refresh()
-            action = ui.choose(self.screen, 'Compose: send, edit, draft, discard', 'sedx')
+            action = ui.choose(self.screen, 'Compose: send, edit, draft, discard', 'sedx', self.theme.status)
             if action == 'e':
                 continue
             if action == 'x':
@@ -257,8 +269,8 @@ class App:
                 return
             except (OSError, delivery.DeliveryError) as exc:
                 self.notice = str(exc)
-                ui.pager(self.screen, 'Delivery failed', str(exc))
-                retry = ui.choose(self.screen, 'Delivery failed: edit, draft, discard', 'edx')
+                ui.pager(self.screen, 'Delivery failed', str(exc), self.theme.header)
+                retry = ui.choose(self.screen, 'Delivery failed: edit, draft, discard', 'edx', self.theme.status)
                 if retry == 'e':
                     continue
                 if retry == 'd':
@@ -282,7 +294,6 @@ class App:
         self.refresh()
 
     def run(self) -> None:
-        ui.initialize_colors(self.screen, self.config.colors)
         self.screen.keypad(True)
         curses.curs_set(0)
         try:
@@ -305,7 +316,13 @@ class App:
                     self.refresh()
                     self.notice = 'refreshed'
                 elif key in ui.KEYS['change']:
-                    value = ui.prompt(self.screen, 'Maildir: ', str(self.config.root) + '/', complete_paths=True)
+                    value = ui.prompt(
+                        self.screen,
+                        'Maildir: ',
+                        str(self.config.root) + '/',
+                        complete_paths=True,
+                        status_attr=self.theme.status,
+                    )
                     if value:
                         try:
                             self.open_maildir(Path(value))

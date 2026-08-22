@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 
 from stamm.config import Config, MimeRule
+from stamm.config_model import DEFAULT_COLORS
 from stamm.mime import MimeManager, _OpenProcess
 
 
@@ -18,7 +19,11 @@ def config(rules: tuple[MimeRule, ...] = ()) -> Config:
         editor='true',
         sendmail='true',
         identities=('sender@example.com',),
+        auto_view=(),
+        alternative_order=('text/plain', 'text/html'),
+        signatures={},
         mime=rules,
+        colors=DEFAULT_COLORS,
     )
 
 
@@ -28,7 +33,7 @@ def test_unknown_mime_type_uses_xdg_open() -> None:
 
 
 def test_configured_opener_takes_priority() -> None:
-    manager = MimeManager(config((MimeRule('application/pdf', open='custom {file}'),)))
+    manager = MimeManager(config((MimeRule('application/pdf', None, 'custom {file}'),)))
     assert manager.opener_command('application/pdf') == 'custom {file}'
 
 

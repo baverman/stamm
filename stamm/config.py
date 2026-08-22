@@ -2,100 +2,22 @@
 
 from __future__ import annotations
 
-import fnmatch
 import os
 import tomllib
-from dataclasses import dataclass, field
-from email.utils import getaddresses
+from dataclasses import replace
 from pathlib import Path
-from typing import Any
+
+from .config_model import Config, MimeRule
+from .schema import parse
+
+__all__ = ['Config', 'ConfigError', 'MimeRule', 'load_config']
 
 
 class ConfigError(ValueError):
     """An invalid Stamm configuration."""
 
 
-COLOR_NAMES = frozenset(
-    {
-        'default',
-        'black',
-        'red',
-        'green',
-        'yellow',
-        'blue',
-        'magenta',
-        'cyan',
-        'white',
-        'bright-black',
-        'bright-red',
-        'bright-green',
-        'bright-yellow',
-        'bright-blue',
-        'bright-magenta',
-        'bright-cyan',
-        'bright-white',
-    }
-)
-COLOR_ATTRIBUTES = frozenset({'bold', 'dim', 'reverse', 'underline', 'standout'})
-COLOR_ROLES = frozenset({'header', 'status', 'indicator', 'index_date', 'index_flags', 'index_sender', 'index_subject'})
-type ColorValue = str | int
-
-
-@dataclass(frozen=True)
-class ColorStyle:
-    fg: ColorValue | None = None
-    bg: ColorValue | None = None
-    attrs: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
-class ColorConfig:
-    normal: ColorStyle = ColorStyle(fg='default', bg='default')
-    roles: dict[str, ColorStyle] = field(default_factory=dict)
-
-    def resolved(self, role: str) -> ColorStyle:
-        if role == 'normal':
-            return self.normal
-        style = self.roles.get(role, ColorStyle())
-        return ColorStyle(
-            fg=self.normal.fg if style.fg is None else style.fg,
-            bg=self.normal.bg if style.bg is None else style.bg,
-            attrs=style.attrs,
-        )
-
-
-@dataclass(frozen=True)
-class MimeRule:
-    type: str
-    display: str | None = None
-    open: str | None = None
-
-    def matches(self, content_type: str) -> bool:
-        return fnmatch.fnmatchcase(content_type.lower(), self.type.lower())
-
-
-@dataclass(frozen=True)
-class Config:
-    root: Path
-    spool: Path
-    sent: Path
-    drafts: Path
-    trash: Path
-    editor: str
-    sendmail: str
-    identities: tuple[str, ...]
-    auto_view: tuple[str, ...] = ()
-    alternative_order: tuple[str, ...] = ('text/plain', 'text/html')
-    signatures: dict[str, Path] = field(default_factory=dict)
-    mime: tuple[MimeRule, ...] = ()
-    colors: ColorConfig = field(default_factory=ColorConfig)
-
-    @property
-    def identity_addresses(self) -> tuple[str, ...]:
-        return tuple(address.lower() for _, address in getaddresses(self.identities) if address)
-
-
-def expand_path(value: str, base: Path | None = None) -> Path:
+def expand_path(value: Path, base: Path | None = None) -> Path:
     path = Path(os.path.expandvars(os.path.expanduser(value)))
     return path if path.is_absolute() or base is None else base / path
 
@@ -106,61 +28,6 @@ def config_candidates() -> list[Path]:
         paths.append(Path(xdg) / 'stamm.toml')
     paths.append(Path.home() / '.config' / 'stamm.toml')
     return paths
-
-
-def _strings(data: dict[str, Any], key: str, default: tuple[str, ...] = ()) -> tuple[str, ...]:
-    value = data.get(key, list(default))
-    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-        raise ConfigError(f'{key} must be an array of strings')
-    return tuple(value)
-
-
-def _color_value(value: Any, field_name: str) -> ColorValue | None:
-    if value is None:
-        return None
-    if isinstance(value, bool) or not isinstance(value, (str, int)):
-        raise ConfigError(f'{field_name} must be a color name or nonnegative index')
-    if isinstance(value, str) and value not in COLOR_NAMES:
-        raise ConfigError(f'unknown color name for {field_name}: {value}')
-    if isinstance(value, int) and value < 0:
-        raise ConfigError(f'{field_name} color index must be nonnegative')
-    return value
-
-
-def _color_style(value: Any, role: str) -> ColorStyle:
-    if not isinstance(value, dict):
-        raise ConfigError(f'colors.{role} must be a table')
-    unknown = set(value) - {'fg', 'bg', 'attrs'}
-    if unknown:
-        raise ConfigError(f'unknown colors.{role} options: {", ".join(sorted(unknown))}')
-    attrs = value.get('attrs', [])
-    if not isinstance(attrs, list) or not all(isinstance(attr, str) for attr in attrs):
-        raise ConfigError(f'colors.{role}.attrs must be an array of strings')
-    invalid = set(attrs) - COLOR_ATTRIBUTES
-    if invalid:
-        raise ConfigError(f'unknown colors.{role} attributes: {", ".join(sorted(invalid))}')
-    return ColorStyle(
-        fg=_color_value(value.get('fg'), f'colors.{role}.fg'),
-        bg=_color_value(value.get('bg'), f'colors.{role}.bg'),
-        attrs=tuple(attrs),
-    )
-
-
-def _colors(data: dict[str, Any]) -> ColorConfig:
-    value = data.get('colors', {})
-    if not isinstance(value, dict):
-        raise ConfigError('colors must be a table')
-    unknown = set(value) - COLOR_ROLES - {'normal'}
-    if unknown:
-        raise ConfigError(f'unknown color roles: {", ".join(sorted(unknown))}')
-    raw_normal = _color_style(value.get('normal', {}), 'normal')
-    normal = ColorStyle(
-        fg='default' if raw_normal.fg is None else raw_normal.fg,
-        bg='default' if raw_normal.bg is None else raw_normal.bg,
-        attrs=raw_normal.attrs,
-    )
-    roles = {role: _color_style(style, role) for role, style in value.items() if role != 'normal'}
-    return ColorConfig(normal, roles)
 
 
 def load_config(path: Path | None = None) -> Config:
@@ -175,60 +42,22 @@ def load_config(path: Path | None = None) -> Config:
     except (OSError, tomllib.TOMLDecodeError) as exc:
         raise ConfigError(f'cannot load {path}: {exc}') from exc
 
-    root_value = data.get('root')
-    if not isinstance(root_value, str):
-        raise ConfigError('root must be a path string')
-    root = expand_path(root_value)
+    if 'editor' not in data:
+        data['editor'] = os.environ.get('EDITOR', '')
+    try:
+        config = parse(Config, data)
+    except ValueError as exc:
+        raise ConfigError(str(exc)) from exc
+
+    root = expand_path(config.root)
     if not root.is_absolute():
         raise ConfigError('root must resolve to an absolute path')
-
-    def required_path(key: str) -> Path:
-        value = data.get(key)
-        if not isinstance(value, str) or not value:
-            raise ConfigError(f'{key} must be a path string')
-        return expand_path(value, root)
-
-    identities = _strings(data, 'identities')
-    if not identities or not getaddresses(identities) or any(not addr for _, addr in getaddresses(identities)):
-        raise ConfigError('identities must contain at least one valid address')
-    editor = data.get('editor', os.environ.get('EDITOR', ''))
-    sendmail = data.get('sendmail')
-    if not isinstance(editor, str) or not editor:
-        raise ConfigError('editor is not configured and EDITOR is empty')
-    if not isinstance(sendmail, str) or not sendmail:
-        raise ConfigError('sendmail must be a command string')
-
-    raw_signatures = data.get('signatures', {})
-    if not isinstance(raw_signatures, dict) or not all(
-        isinstance(k, str) and isinstance(v, str) for k, v in raw_signatures.items()
-    ):
-        raise ConfigError('signatures must map addresses to paths')
-    signatures = {key.lower(): expand_path(value, root) for key, value in raw_signatures.items()}
-
-    raw_mime = data.get('mime', [])
-    if not isinstance(raw_mime, list):
-        raise ConfigError('mime must be an array of tables')
-    rules: list[MimeRule] = []
-    for item in raw_mime:
-        if not isinstance(item, dict) or not isinstance(item.get('type'), str):
-            raise ConfigError('each MIME rule needs a type')
-        display, opener = item.get('display'), item.get('open')
-        if display is not None and not isinstance(display, str) or opener is not None and not isinstance(opener, str):
-            raise ConfigError('MIME commands must be strings')
-        rules.append(MimeRule(item['type'], display, opener))
-
-    return Config(
+    return replace(
+        config,
         root=root,
-        spool=required_path('spool'),
-        sent=required_path('sent'),
-        drafts=required_path('drafts'),
-        trash=required_path('trash'),
-        editor=editor,
-        sendmail=sendmail,
-        identities=identities,
-        auto_view=_strings(data, 'auto_view'),
-        alternative_order=_strings(data, 'alternative_order', ('text/plain', 'text/html')),
-        signatures=signatures,
-        mime=tuple(rules),
-        colors=_colors(data),
+        spool=expand_path(config.spool, root),
+        sent=expand_path(config.sent, root),
+        drafts=expand_path(config.drafts, root),
+        trash=expand_path(config.trash, root),
+        signatures={address.lower(): expand_path(value, root) for address, value in config.signatures.items()},
     )

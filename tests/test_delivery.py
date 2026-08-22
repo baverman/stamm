@@ -8,6 +8,7 @@ import pytest
 
 from stamm.compose import ComposeData
 from stamm.config import Config
+from stamm.config_model import DEFAULT_COLORS
 from stamm.delivery import DeliveryError, envelope, send
 
 
@@ -22,6 +23,11 @@ def config() -> Config:
         editor='true',
         sendmail='sendmail --mode test',
         identities=('Sender <sender@example.com>',),
+        auto_view=(),
+        alternative_order=('text/plain', 'text/html'),
+        signatures={},
+        mime=(),
+        colors=DEFAULT_COLORS,
     )
 
 

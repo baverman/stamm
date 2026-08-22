@@ -7,6 +7,7 @@ import curses
 import sys
 from pathlib import Path
 
+from . import ui
 from .app import App
 from .config import ConfigError, load_config
 
@@ -19,7 +20,12 @@ def main(argv: list[str] | None = None) -> int:
         config = load_config()
         # CLI paths are intentionally not expanded by Stamm.
         selected = args.maildir if args.maildir is not None else config.spool
-        curses.wrapper(lambda screen: App(screen, config, selected).run())
+
+        def run(screen: curses.window) -> None:
+            theme = ui.initialize_colors(screen, config.colors)
+            App(screen, config, selected, theme).run()
+
+        curses.wrapper(run)
     except (ConfigError, OSError, RuntimeError) as exc:
         print(f'stamm: {exc}', file=sys.stderr)
         return 1

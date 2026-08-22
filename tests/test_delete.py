@@ -5,8 +5,10 @@ from pathlib import Path
 
 import pytest
 
+from stamm import ui
 from stamm.app import App
 from stamm.config import Config
+from stamm.config_model import DEFAULT_COLORS
 from stamm.index import MessageIndex
 from stamm.maildir import ensure_maildir, store
 
@@ -63,8 +65,13 @@ def test_mark_keeps_message_until_purge(tmp_path: Path) -> None:
         editor='true',
         sendmail='true',
         identities=('sender@example.com',),
+        auto_view=(),
+        alternative_order=('text/plain', 'text/html'),
+        signatures={},
+        mime=(),
+        colors=DEFAULT_COLORS,
     )
-    app = App(object(), config, inbox)  # type: ignore[arg-type]
+    app = App(object(), config, inbox, ui.CursesTheme(0, 0, 0, 0, 0, 0, 0, 0))  # type: ignore[arg-type]
     try:
         app.open_maildir(inbox)
         key = app.rows[0].message.key
