@@ -25,15 +25,17 @@ DEFAULT_COLOR_PAIR = 1
 INDEX_DATE_COLOR_PAIR = 2
 INDEX_FLAGS_COLOR_PAIR = 3
 INDEX_INDICATOR_COLOR_PAIR = 4
+INDEX_SENDER_COLOR_PAIR = 5
 _default_color_attr = 0
 _index_date_color_attr = 0
 _index_flags_color_attr = 0
 _index_indicator_color_attr = curses.A_REVERSE
+_index_sender_color_attr = 0
 
 
 def initialize_colors(window: curses.window) -> None:
     """Use the terminal's natural colors and initialize index colors."""
-    global _default_color_attr, _index_date_color_attr, _index_flags_color_attr, _index_indicator_color_attr
+    global _default_color_attr, _index_date_color_attr, _index_flags_color_attr, _index_indicator_color_attr, _index_sender_color_attr
     if not curses.has_colors():
         return
     try:
@@ -43,12 +45,14 @@ def initialize_colors(window: curses.window) -> None:
         curses.init_pair(INDEX_DATE_COLOR_PAIR, curses.COLOR_BLUE, -1)
         curses.init_pair(INDEX_FLAGS_COLOR_PAIR, curses.COLOR_RED, -1)
         curses.init_pair(INDEX_INDICATOR_COLOR_PAIR, curses.COLOR_BLACK, curses.COLOR_WHITE)
+        curses.init_pair(INDEX_SENDER_COLOR_PAIR, curses.COLOR_GREEN, -1)
     except curses.error:
         return
     _default_color_attr = curses.color_pair(DEFAULT_COLOR_PAIR)
     _index_date_color_attr = curses.color_pair(INDEX_DATE_COLOR_PAIR)
     _index_flags_color_attr = curses.color_pair(INDEX_FLAGS_COLOR_PAIR) | curses.A_BOLD
     _index_indicator_color_attr = curses.color_pair(INDEX_INDICATOR_COLOR_PAIR)
+    _index_sender_color_attr = curses.color_pair(INDEX_SENDER_COLOR_PAIR)
     window.bkgd(" ", _default_color_attr)
 
 
@@ -62,6 +66,10 @@ def index_flags_color() -> int:
 
 def index_indicator_color() -> int:
     return _index_indicator_color_attr
+
+
+def index_sender_color() -> int:
+    return _index_sender_color_attr
 
 
 def format_index_date(timestamp: float, now: float | None = None) -> str:

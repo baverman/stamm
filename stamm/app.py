@@ -61,7 +61,7 @@ class App:
     def draw_index(self) -> None:
         self.screen.erase()
         height, width = self.screen.getmaxyx()
-        ui.put(self.screen, 0, 0, f" Stamm — {self.maildir} ".ljust(width), width, curses.A_REVERSE)
+        ui.put(self.screen, 0, 0, f"Stamm — {self.maildir}".ljust(width), width, curses.A_REVERSE)
         visible = max(1, height - 2)
         self.index_offset = ui.viewport_start(
             self.selected, len(self.rows), visible, self.index_offset
@@ -81,10 +81,10 @@ class App:
             if not selected:
                 ui.put(self.screen, y, 0, date, 12, ui.index_date_color())
                 ui.put(self.screen, y, 13, flags, 2, ui.index_flags_color())
-        if self.notice:
-            ui.status(self.screen, self.notice)
-        else:
-            self.screen.refresh()
+                ui.put(self.screen, y, 16, sender, 20, ui.index_sender_color())
+        count = len(self.rows)
+        summary = f" {count} {'message' if count == 1 else 'messages'}"
+        ui.status(self.screen, self.notice or summary)
         self.notice = ""
 
     def _message(self) -> EmailMessage:
