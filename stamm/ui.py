@@ -213,10 +213,24 @@ def status(window: curses.window, text: str, attr: int) -> None:
     window.refresh()
 
 
-def choose(window: curses.window, prompt_text: str, choices: str, status_attr: int) -> str:
+def choose(
+    window: curses.window,
+    prompt_text: str,
+    choices: str,
+    status_attr: int,
+    *,
+    primary: str,
+    cancel: str,
+) -> str:
+    if primary not in choices or cancel not in choices:
+        raise ValueError('primary and cancel actions must be choices')
     status(window, f'{prompt_text} [{"/".join(choices)}]', status_attr)
     while True:
         key = window.get_wch()
+        if key in ('\n', '\r', curses.KEY_ENTER):
+            return primary
+        if key in ('\x1b', 27):
+            return cancel
         if isinstance(key, str) and key in choices:
             return key
 

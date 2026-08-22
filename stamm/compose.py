@@ -117,30 +117,31 @@ def validate(data: ComposeData) -> list[str]:
     return errors
 
 
-def edit(config: Config, initial: ComposeData, errors: list[str] | None = None) -> ComposeData:
-    """Run the configured editor until the buffer is valid."""
+def edit(
+    config: Config, initial: ComposeData, errors: list[str] | None = None
+) -> tuple[ComposeData, bool]:
+    """Run the configured editor once and report whether its buffer changed."""
     content = format_buffer(initial)
-    while True:
-        with tempfile.NamedTemporaryFile(
-            'w+', suffix='.eml', prefix='stamm-compose-', encoding='utf-8', delete=False
-        ) as stream:
-            path = Path(stream.name)
-            if errors:
-                stream.write('# ' + '\n# '.join(errors) + '\n')
-            stream.write(content)
-        try:
-            result = subprocess.run([*shlex.split(config.editor), str(path)])
-            if result.returncode:
-                raise RuntimeError(f'editor exited with status {result.returncode}')
-            content = path.read_text(encoding='utf-8')
-        finally:
-            path.unlink(missing_ok=True)
-        data = parse_buffer(content)
-        data.in_reply_to = initial.in_reply_to
-        data.references = initial.references
-        errors = validate(data)
-        if not errors:
-            return data
+    if errors:
+        content = '# ' + '\n# '.join(errors) + '\n' + content
+    with tempfile.NamedTemporaryFile(
+        'w+', suffix='.eml', prefix='stamm-compose-', encoding='utf-8', delete=False
+    ) as stream:
+        path = Path(stream.name)
+        stream.write(content)
+    try:
+        result = subprocess.run([*shlex.split(config.editor), str(path)])
+        if result.returncode:
+            raise RuntimeError(f'editor exited with status {result.returncode}')
+        edited = path.read_text(encoding='utf-8')
+    finally:
+        path.unlink(missing_ok=True)
+    if edited == content:
+        return initial, False
+    data = parse_buffer(edited)
+    data.in_reply_to = initial.in_reply_to
+    data.references = initial.references
+    return data, True
 
 
 def new(config: Config) -> ComposeData:

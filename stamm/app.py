@@ -173,7 +173,14 @@ class App:
         count = sum(len(state.pending_delete) for state in self.maildirs.values())
         if not count:
             return True
-        answer = ui.choose(self.screen, f'Move {count} deleted message(s) to Trash?', 'yn', self.theme.status)
+        answer = ui.choose(
+            self.screen,
+            f'Move {count} deleted message(s) to Trash?',
+            'yn',
+            self.theme.status,
+            primary='y',
+            cancel='n',
+        )
         if answer == 'n':
             return True
         errors = self.purge_deleted()
@@ -252,15 +259,38 @@ class App:
 
     def compose(self, initial: compose.ComposeData, old_draft: Path | None = None) -> None:
         data = initial
+        edited = False
+        errors: list[str] | None = None
         while True:
             curses.def_prog_mode()
             curses.endwin()
             try:
-                data = compose.edit(self.config, data)
+                data, changed = compose.edit(self.config, data, errors)
             finally:
                 curses.reset_prog_mode()
                 self.screen.refresh()
-            action = ui.choose(self.screen, 'Compose: send, edit, draft, discard', 'sedx', self.theme.status)
+            if not changed and not edited:
+                return
+            edited = edited or changed
+            errors = compose.validate(data)
+            if errors:
+                action = ui.choose(
+                    self.screen,
+                    'Compose invalid: edit, draft, discard',
+                    'edx',
+                    self.theme.status,
+                    primary='e',
+                    cancel='x',
+                )
+            else:
+                action = ui.choose(
+                    self.screen,
+                    'Compose: send, edit, draft, discard',
+                    'sedx',
+                    self.theme.status,
+                    primary='s',
+                    cancel='x',
+                )
             if action == 'e':
                 continue
             if action == 'x':
@@ -278,7 +308,14 @@ class App:
             except (OSError, delivery.DeliveryError) as exc:
                 self.notice = str(exc)
                 ui.pager(self.screen, 'Delivery failed', str(exc), self.theme.header)
-                retry = ui.choose(self.screen, 'Delivery failed: edit, draft, discard', 'edx', self.theme.status)
+                retry = ui.choose(
+                    self.screen,
+                    'Delivery failed: edit, draft, discard',
+                    'edx',
+                    self.theme.status,
+                    primary='e',
+                    cancel='x',
+                )
                 if retry == 'e':
                     continue
                 if retry == 'd':

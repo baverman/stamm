@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import curses
+
 from datetime import datetime
 
 import pytest
 
+from stamm import ui
 from stamm.ui import format_index_date, format_sender, viewport_start, wrap_text
 
 
@@ -67,3 +70,37 @@ def test_final_message_keeps_the_bottom_scroll_margin() -> None:
     assert viewport_start(99, 100, 20, 0) == 86
     # The margin is capped at ten on large screens.
     assert viewport_start(199, 200, 100, 0) == 110
+
+
+class _ChoiceWindow:
+    def __init__(self, key: str | int):
+        self.key = key
+
+    def get_wch(self) -> str | int:
+        return self.key
+
+
+@pytest.mark.parametrize(
+    ('key', 'expected'),
+    [
+        ('\n', 's'),
+        ('\r', 's'),
+        (curses.KEY_ENTER, 's'),
+        ('\x1b', 'x'),
+        (27, 'x'),
+        ('e', 'e'),
+    ],
+)
+def test_choose_maps_generic_and_explicit_keys(
+    key: str | int, expected: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(ui, 'status', lambda *_args: None)
+
+    assert ui.choose(
+        _ChoiceWindow(key),  # type: ignore[arg-type]
+        'Compose',
+        'sedx',
+        0,
+        primary='s',
+        cancel='x',
+    ) == expected
