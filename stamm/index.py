@@ -61,9 +61,21 @@ class MessageIndex:
 
     @staticmethod
     def _from_row(row: sqlite3.Row) -> IndexedMessage:
-        values = dict(row)
-        values['references'] = tuple(json.loads(values.pop('refs')))
-        return IndexedMessage(**values)
+        refs = row['refs']
+        return IndexedMessage(
+            key=row['key'],
+            path=row['path'],
+            size=row['size'],
+            mtime_ns=row['mtime_ns'],
+            flags=row['flags'],
+            date=row['date'],
+            timestamp=row['timestamp'],
+            sender=row['sender'],
+            subject=row['subject'],
+            message_id=row['message_id'],
+            in_reply_to=row['in_reply_to'],
+            references=() if not refs or refs == '[]' else tuple(json.loads(refs)),
+        )
 
     def messages(self) -> list[IndexedMessage]:
         return [self._from_row(row) for row in self.connection.execute('SELECT * FROM messages')]
@@ -117,6 +129,7 @@ class MessageIndex:
         with self.connection:
             for key in cached.keys() - disk.keys():
                 self.connection.execute('DELETE FROM messages WHERE key = ?', (key,))
+                cached.pop(key)
             for key, entry in disk.items():
                 old = cached.get(key)
                 if old and old.size == entry.size and old.mtime_ns == entry.mtime_ns:
@@ -124,6 +137,7 @@ class MessageIndex:
                         self.connection.execute(
                             'UPDATE messages SET path=?, flags=? WHERE key=?', (entry.relative_path, entry.flags, key)
                         )
+                        cached[key] = replace(old, path=entry.relative_path, flags=entry.flags)
                     continue
                 item = self._parse(entry)
                 self.connection.execute(
@@ -143,7 +157,8 @@ class MessageIndex:
                         json.dumps(item.references),
                     ),
                 )
-        return self.messages()
+                cached[key] = item
+        return list(cached.values())
 
     def set_flags(self, key: str, *, add: str = '', remove: str = '') -> IndexedMessage:
         item = self.get(key)

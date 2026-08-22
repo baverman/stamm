@@ -40,12 +40,20 @@ def scan(path: Path) -> dict[str, MaildirEntry]:
         folder = path / directory
         if not folder.is_dir():
             raise NotADirectoryError(f'not a Maildir: {path}')
-        for item in folder.iterdir():
-            if not item.is_file():
-                continue
-            key, flags = split_name(item.name)
-            stat = item.stat()
-            entries[key] = MaildirEntry(key, item, str(item.relative_to(path)), flags, stat.st_size, stat.st_mtime_ns)
+        with os.scandir(folder) as iterator:
+            for item in iterator:
+                if not item.is_file():
+                    continue
+                key, flags = split_name(item.name)
+                stat = item.stat()
+                entries[key] = MaildirEntry(
+                    key,
+                    Path(item.path),
+                    str(Path(directory) / item.name),
+                    flags,
+                    stat.st_size,
+                    stat.st_mtime_ns,
+                )
     return entries
 
 
