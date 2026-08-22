@@ -99,6 +99,14 @@ class MimeRule:
 
 
 @dataclass(frozen=True)
+class HooksConfig:
+    pre_refresh: str | None = optfield(str)
+
+
+DEFAULT_HOOKS = HooksConfig(None)
+
+
+@dataclass(frozen=True)
 class Config:
     root: Path = field(Path)
     spool: Path = field(Path)
@@ -108,6 +116,7 @@ class Config:
     editor: str = field(str)
     sendmail: str = field(str)
     identities: tuple[str, ...] = field(identities)
+    hooks: HooksConfig = field(HooksConfig, default=DEFAULT_HOOKS, required=False)
     auto_view: tuple[str, ...] = field(as_tuple(str), default=(), required=False)
     alternative_order: tuple[str, ...] = field(as_tuple(str), default=('text/plain', 'text/html'), required=False)
     signatures: dict[str, Path] = field(as_kv(Path), default={}, required=False)

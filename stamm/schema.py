@@ -78,10 +78,12 @@ def parse(cls: type[T], data: dict[str, object]) -> T:
     for f in fields(cls):  # type: ignore[arg-type]
         m: Meta[T] = f.metadata  # type: ignore[assignment]
 
-        v = data.get(src := m['src'] or f.name, m['default'])
+        v = data.get(src := m['src'] or f.name)
         if v is None:
             if m['required']:
                 raise ValidationError(src, 'required field')
+            else:
+                v = m['default']
         else:
             try:
                 v = m['typ'](v)

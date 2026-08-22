@@ -12,7 +12,7 @@ from stamm import compose, delivery, ui
 from stamm.app import App
 from stamm.compose import ComposeData
 from stamm.config import Config
-from stamm.config_model import DEFAULT_COLORS
+from stamm.config_model import DEFAULT_COLORS, HooksConfig
 
 
 @pytest.fixture
@@ -26,6 +26,7 @@ def config(tmp_path: Path) -> Config:
         editor='editor',
         sendmail='sendmail',
         identities=('sender@example.com',),
+        hooks=HooksConfig(None),
         auto_view=(),
         alternative_order=('text/plain', 'text/html'),
         signatures={},

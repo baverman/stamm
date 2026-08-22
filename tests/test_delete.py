@@ -8,7 +8,7 @@ import pytest
 from stamm import ui
 from stamm.app import App, MaildirState
 from stamm.config import Config
-from stamm.config_model import DEFAULT_COLORS
+from stamm.config_model import DEFAULT_COLORS, HooksConfig
 from stamm.index import MessageIndex
 from stamm.maildir import ensure_maildir, store
 
@@ -65,6 +65,7 @@ def test_mark_keeps_message_until_purge(tmp_path: Path) -> None:
         editor='true',
         sendmail='true',
         identities=('sender@example.com',),
+        hooks=HooksConfig(None),
         auto_view=(),
         alternative_order=('text/plain', 'text/html'),
         signatures={},

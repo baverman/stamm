@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import curses
+import shlex
+import subprocess
 import tempfile
 from dataclasses import dataclass
 from email.message import EmailMessage
@@ -119,20 +121,26 @@ class App:
         for y, row in enumerate(self.state.rows[start : start + visible], 1):
             item = row.message
             marked = item.key in deleted
-            status_flag = 'D' if marked else ('r' if 'R' in item.flags else ('N' if 'S' not in item.flags else ' '))
-            flags = status_flag + ('F' if 'F' in item.flags else ' ')
+            flags = ''.join(
+                (
+                    'D' if marked else '',
+                    'N' if 'S' not in item.flags else '',
+                    'r' if 'R' in item.flags else '',
+                    'F' if 'F' in item.flags else '',
+                )
+            )[:3]
             sender = ui.format_sender(item.sender)[:20]
             subject = '  ' * row.depth + item.subject.replace('\n', ' ')
             date = ui.format_index_date(item.timestamp)
-            line = f'{date} {flags:2} {sender:20}  {subject}'
+            line = f'{date} {flags:3} {sender:20}  {subject}'
             selected = start + y - 1 == self.state.selected
             attr = indicator_attr if selected else 0
             ui.put(self.screen, y, 0, line.ljust(width), width, attr)
             if not selected:
                 ui.put(self.screen, y, 0, date, 12, date_attr)
-                ui.put(self.screen, y, 13, flags, 2, flags_attr)
-                ui.put(self.screen, y, 16, sender, 20, sender_attr)
-                ui.put(self.screen, y, 38, subject, max(0, width - 38), subject_attr)
+                ui.put(self.screen, y, 13, flags, 3, flags_attr)
+                ui.put(self.screen, y, 17, sender, 20, sender_attr)
+                ui.put(self.screen, y, 39, subject, max(0, width - 39), subject_attr)
         count = len(self.state.rows)
         summary = f' {count} {"message" if count == 1 else "messages"}'
         ui.status(self.screen, self.notice or summary, theme.status)
@@ -215,6 +223,28 @@ class App:
         errors = self.mime.reap()
         if errors:
             ui.pager(self.screen, 'External opener failed', '\n\n'.join(errors), self.theme.header)
+
+    def manual_refresh(self) -> None:
+        if hook := self.config.hooks.pre_refresh:
+            try:
+                command = [argument.replace('{maildir}', str(self.state.path)) for argument in shlex.split(hook)]
+                if not command:
+                    raise ValueError('command is empty')
+                ui.status(self.screen, 'running pre-refresh hook...', self.theme.status)
+                process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                output, _ = process.communicate()
+            except (OSError, ValueError) as exc:
+                ui.pager(self.screen, 'Pre-refresh hook failed', str(exc), self.theme.header)
+            else:
+                if output:
+                    ui.pager(
+                        self.screen,
+                        'Pre-refresh hook output',
+                        output.decode('utf-8', errors='replace'),
+                        self.theme.header,
+                    )
+        self.state.refresh()
+        self.notice = 'refreshed'
 
     def parts_view(self, message: EmailMessage) -> None:
         rows = part_rows(message)
@@ -369,8 +399,7 @@ class App:
                 elif key in ui.KEYS['open'] and self.state.rows:
                     self.message_view()
                 elif key in ui.KEYS['refresh']:
-                    self.state.refresh()
-                    self.notice = 'refreshed'
+                    self.manual_refresh()
                 elif key in ui.KEYS['change']:
                     value = ui.prompt(
                         self.screen,

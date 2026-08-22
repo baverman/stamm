@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 
 from stamm.config import Config, MimeRule
-from stamm.config_model import DEFAULT_COLORS
+from stamm.config_model import DEFAULT_COLORS, HooksConfig
 from stamm.mime import MimeManager, _OpenProcess
 
 
@@ -19,6 +19,7 @@ def config(rules: tuple[MimeRule, ...] = ()) -> Config:
         editor='true',
         sendmail='true',
         identities=('sender@example.com',),
+        hooks=HooksConfig(None),
         auto_view=(),
         alternative_order=('text/plain', 'text/html'),
         signatures={},
@@ -58,7 +59,6 @@ def test_one_out_file_captures_stdout_and_stderr() -> None:
     assert 'exit status: 7' in errors[0]
     assert 'output:\nstdoutstderr' in errors[0]
     assert not Path(directory.name).exists()
-
 
 
 def test_successful_opener_keeps_temporary_file_until_manager_closes() -> None:
