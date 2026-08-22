@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from stamm import ui
-from stamm.app import App
+from stamm.app import App, MaildirState
 from stamm.config import Config
 from stamm.config_model import DEFAULT_COLORS
 from stamm.index import MessageIndex
@@ -71,20 +71,30 @@ def test_mark_keeps_message_until_purge(tmp_path: Path) -> None:
         mime=(),
         colors=DEFAULT_COLORS,
     )
-    app = App(object(), config, inbox, ui.CursesTheme(0, 0, 0, 0, 0, 0, 0, 0))  # type: ignore[arg-type]
+    state = MaildirState.open(inbox)
+    app = App(object(), config, state, ui.CursesTheme(0, 0, 0, 0, 0, 0, 0, 0))  # type: ignore[arg-type]
     try:
-        app.open_maildir(inbox)
-        key = app.rows[0].message.key
+        key = state.rows[0].message.key
 
         app.mark_deleted()
+        state.offset = 9
+        other = tmp_path / 'other'
+        ensure_maildir(other)
+        app.open_maildir(other)
+        other_state = app.state
+        app.open_maildir(inbox)
+
+        assert app.state is state
+        assert app.state is not other_state
+        assert state.offset == 9
 
         assert source.exists()
-        assert key in app.pending_delete[inbox.resolve()]
+        assert key in state.pending_delete
         assert app.purge_deleted() == []
         assert not source.exists()
-        assert not app.pending_delete
+        assert not state.pending_delete
         assert len(list((trash / 'new').iterdir())) == 1
     finally:
-        if app.index:
-            app.index.close()
+        for maildir in app.maildirs.values():
+            maildir.index.close()
         app.mime.close()

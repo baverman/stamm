@@ -16,7 +16,7 @@ header = { attrs = ["reverse"] }
 status = { attrs = ["reverse"] }
 indicator = { fg = "black", bg = "white" }
 index_date = { fg = "blue" }
-index_flags = { fg = "bright-red" }
+index_flags = { fg = "bright-red", attrs = ["bold"] }
 index_sender = { fg = "green" }
 
 [signatures]

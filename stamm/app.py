@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import curses
 import tempfile
+from dataclasses import dataclass
 from email.message import EmailMessage
 from pathlib import Path
 
@@ -15,64 +16,107 @@ from .mime import MimeManager, part_rows, save_part
 from .threads import ThreadRow, build_threads
 
 
-class App:
-    def __init__(self, screen: curses.window, config: Config, maildir: Path, theme: ui.CursesTheme):
-        self.screen = screen
-        self.config = config
-        self.maildir = maildir
-        self.index: MessageIndex | None = None
-        self.rows: list[ThreadRow] = []
-        self.selected = 0
-        self.index_offset = 0
-        self.notice = ''
-        self.mime = MimeManager(config)
-        self.pending_delete: dict[Path, set[str]] = {}
-        self.theme = theme
+@dataclass
+class MaildirState:
+    path: Path
+    index: MessageIndex
+    rows: list[ThreadRow]
+    selected: int
+    offset: int
+    pending_delete: set[str]
 
-    def open_maildir(self, path: Path) -> None:
-        candidate = MessageIndex(path)
+    @classmethod
+    def open(cls, path: Path) -> MaildirState:
+        index = MessageIndex(path)
         try:
-            rows = build_threads(candidate.refresh())
+            rows = build_threads(index.refresh())
         except Exception:
-            candidate.close()
+            index.close()
             raise
-        if self.index:
-            self.index.close()
-        self.index = candidate
-        self.maildir = path
-        self.rows = rows
-        self.selected = max(0, len(self.rows) - 1)
-        self.index_offset = 0
+        return cls(path, index, rows, max(0, len(rows) - 1), 0, set())
 
-    def _load_rows(self, messages: list[IndexedMessage]) -> None:
-        key = self.rows[self.selected].message.key if self.rows else None
+    @property
+    def selected_message(self) -> IndexedMessage:
+        return self.rows[self.selected].message
+
+    def load_rows(self, messages: list[IndexedMessage]) -> None:
+        key = self.selected_message.key if self.rows else None
         self.rows = build_threads(messages)
         if key:
             self.selected = next((i for i, row in enumerate(self.rows) if row.message.key == key), 0)
+        else:
+            self.selected = min(self.selected, max(0, len(self.rows) - 1))
 
     def refresh(self) -> None:
-        assert self.index
-        self._load_rows(self.index.refresh())
+        self.load_rows(self.index.refresh())
 
     def reload_cached(self) -> None:
-        assert self.index
-        self._load_rows(self.index.messages())
+        self.load_rows(self.index.messages())
+
+    def mark_deleted(self) -> None:
+        self.pending_delete.add(self.selected_message.key)
+        self.selected = min(len(self.rows) - 1, self.selected + 1)
+
+    def unmark_deleted(self) -> None:
+        self.pending_delete.discard(self.selected_message.key)
+        self.selected = min(len(self.rows) - 1, self.selected + 1)
+
+    def purge_deleted(self, trash: Path) -> list[str]:
+        if not self.pending_delete:
+            return []
+        errors: list[str] = []
+        position = self.selected
+        for key in list(self.pending_delete):
+            try:
+                if self.index.get(key) is not None:
+                    self.index.move_to(key, trash)
+                self.pending_delete.discard(key)
+            except (OSError, ValueError) as exc:
+                errors.append(f'{self.path}: {exc}')
+        self.rows = build_threads(self.index.messages())
+        self.selected = min(position, max(0, len(self.rows) - 1))
+        return errors
+
+
+class App:
+    def __init__(
+        self,
+        screen: curses.window,
+        config: Config,
+        state: MaildirState,
+        theme: ui.CursesTheme,
+    ):
+        self.screen = screen
+        self.config = config
+        self.state = state
+        self.maildirs = {state.path.resolve(): state}
+        self.notice = ''
+        self.mime = MimeManager(config)
+        self.theme = theme
+
+    def open_maildir(self, path: Path) -> None:
+        key = path.resolve()
+        state = self.maildirs.get(key)
+        if state is None:
+            state = MaildirState.open(path)
+            self.maildirs[key] = state
+        self.state = state
 
     def draw_index(self) -> None:
         self.screen.erase()
         height, width = self.screen.getmaxyx()
         theme = self.theme
-        ui.put(self.screen, 0, 0, f'Stamm — {self.maildir}'.ljust(width), width, theme.header)
+        ui.put(self.screen, 0, 0, f'Stamm — {self.state.path}'.ljust(width), width, theme.header)
         visible = max(1, height - 2)
-        self.index_offset = ui.viewport_start(self.selected, len(self.rows), visible, self.index_offset)
-        start = self.index_offset
-        deleted = self.pending_delete.get(self.maildir.resolve(), set())
+        self.state.offset = ui.viewport_start(self.state.selected, len(self.state.rows), visible, self.state.offset)
+        start = self.state.offset
+        deleted = self.state.pending_delete
         date_attr = theme.index_date
         flags_attr = theme.index_flags
         sender_attr = theme.index_sender
         subject_attr = theme.index_subject
         indicator_attr = theme.indicator
-        for y, row in enumerate(self.rows[start : start + visible], 1):
+        for y, row in enumerate(self.state.rows[start : start + visible], 1):
             item = row.message
             marked = item.key in deleted
             flags = ('D' if marked else ('N' if 'S' not in item.flags else ' ')) + ('F' if 'F' in item.flags else ' ')
@@ -80,7 +124,7 @@ class App:
             subject = '  ' * row.depth + item.subject.replace('\n', ' ')
             date = ui.format_index_date(item.timestamp)
             line = f'{date} {flags:2} {sender:20}  {subject}'
-            selected = start + y - 1 == self.selected
+            selected = start + y - 1 == self.state.selected
             attr = indicator_attr if selected else 0
             ui.put(self.screen, y, 0, line.ljust(width), width, attr)
             if not selected:
@@ -88,14 +132,14 @@ class App:
                 ui.put(self.screen, y, 13, flags, 2, flags_attr)
                 ui.put(self.screen, y, 16, sender, 20, sender_attr)
                 ui.put(self.screen, y, 38, subject, max(0, width - 38), subject_attr)
-        count = len(self.rows)
+        count = len(self.state.rows)
         summary = f' {count} {"message" if count == 1 else "messages"}'
         ui.status(self.screen, self.notice or summary, theme.status)
         self.notice = ''
 
     def _message(self) -> EmailMessage:
-        item = self.rows[self.selected].message
-        return parse_message(self.maildir / item.path)
+        item = self.state.selected_message
+        return parse_message(self.state.path / item.path)
 
     def _render_body(self, message: EmailMessage) -> str:
         part = select_body(message, self.config)
@@ -107,61 +151,26 @@ class App:
             return f'[Cannot display {part.get_content_type()}: {exc}]'
 
     def mark_deleted(self) -> None:
-        if not self.rows:
+        if not self.state.rows:
             return
-        folder = self.maildir.resolve()
-        if folder == self.config.trash.resolve():
+        if self.state.path.resolve() == self.config.trash.resolve():
             self.notice = 'messages in Trash cannot be marked for deletion'
             return
-        key = self.rows[self.selected].message.key
-        self.pending_delete.setdefault(folder, set()).add(key)
+        self.state.mark_deleted()
         self.notice = 'marked for deletion'
-        self.selected = min(len(self.rows) - 1, self.selected + 1)
 
     def unmark_deleted(self) -> None:
-        if not self.rows:
+        if not self.state.rows:
             return
-        folder = self.maildir.resolve()
-        keys = self.pending_delete.get(folder)
-        if keys:
-            keys.discard(self.rows[self.selected].message.key)
-            if not keys:
-                self.pending_delete.pop(folder, None)
+        self.state.unmark_deleted()
         self.notice = 'deletion mark removed'
-        self.selected = min(len(self.rows) - 1, self.selected + 1)
 
     def purge_deleted(self) -> list[str]:
         """Move all marked messages to Trash and return failures."""
-        errors: list[str] = []
-        current_folder = self.maildir.resolve()
-        current_position = self.selected
-        for folder, keys in list(self.pending_delete.items()):
-            index = self.index if folder == current_folder else None
-            owned_index = index is None
-            try:
-                if index is None:
-                    index = MessageIndex(folder)
-                for key in list(keys):
-                    try:
-                        if index.get(key) is not None:
-                            index.move_to(key, self.config.trash)
-                        keys.discard(key)
-                    except (OSError, ValueError) as exc:
-                        errors.append(f'{folder}: {exc}')
-            except OSError as exc:
-                errors.append(f'{folder}: {exc}')
-            finally:
-                if owned_index and index is not None:
-                    index.close()
-            if not keys:
-                self.pending_delete.pop(folder, None)
-        if self.index and current_folder == self.maildir.resolve():
-            self.rows = build_threads(self.index.messages())
-            self.selected = min(current_position, max(0, len(self.rows) - 1))
-        return errors
+        return [error for state in self.maildirs.values() for error in state.purge_deleted(self.config.trash)]
 
     def confirm_exit(self) -> bool:
-        count = sum(len(keys) for keys in self.pending_delete.values())
+        count = sum(len(state.pending_delete) for state in self.maildirs.values())
         if not count:
             return True
         answer = ui.choose(self.screen, f'Move {count} deleted message(s) to Trash?', 'yn', self.theme.status)
@@ -174,12 +183,11 @@ class App:
         return True
 
     def message_view(self) -> None:
-        assert self.index
-        item = self.rows[self.selected].message
+        item = self.state.selected_message
         if 'S' not in item.flags:
-            self.index.set_flags(item.key, add='S')
-            self.reload_cached()
-            item = self.rows[self.selected].message
+            self.state.index.set_flags(item.key, add='S')
+            self.state.reload_cached()
+            item = self.state.selected_message
         message = self._message()
         body = self._render_body(message)
         while True:
@@ -284,20 +292,19 @@ class App:
                 return
 
     def resume(self) -> None:
-        if self.maildir.resolve() != self.config.drafts.resolve() or not self.rows:
+        if self.state.path.resolve() != self.config.drafts.resolve() or not self.state.rows:
             self.notice = 'resume is available only in the Drafts Maildir'
             return
-        old_path = self.maildir / self.rows[self.selected].message.path
+        old_path = self.state.path / self.state.selected_message.path
         message = self._message()
         with tempfile.TemporaryDirectory(prefix='stamm-draft-') as workspace:
             self.compose(delivery.resume_draft(message, Path(workspace)), old_path)
-        self.refresh()
+        self.state.refresh()
 
     def run(self) -> None:
         self.screen.keypad(True)
         curses.curs_set(0)
         try:
-            self.open_maildir(self.maildir)
             while True:
                 self.show_opener_errors()
                 self.draw_index()
@@ -306,14 +313,14 @@ class App:
                     if self.confirm_exit():
                         return
                     continue
-                if key in ui.KEYS['down'] and self.rows:
-                    self.selected = min(len(self.rows) - 1, self.selected + 1)
-                elif key in ui.KEYS['up'] and self.rows:
-                    self.selected = max(0, self.selected - 1)
-                elif key in ui.KEYS['open'] and self.rows:
+                if key in ui.KEYS['down'] and self.state.rows:
+                    self.state.selected = min(len(self.state.rows) - 1, self.state.selected + 1)
+                elif key in ui.KEYS['up'] and self.state.rows:
+                    self.state.selected = max(0, self.state.selected - 1)
+                elif key in ui.KEYS['open'] and self.state.rows:
                     self.message_view()
                 elif key in ui.KEYS['refresh']:
-                    self.refresh()
+                    self.state.refresh()
                     self.notice = 'refreshed'
                 elif key in ui.KEYS['change']:
                     value = ui.prompt(
@@ -330,35 +337,33 @@ class App:
                             self.notice = str(exc)
                 elif key in ui.KEYS['compose']:
                     self.compose(compose.new(self.config))
-                elif key in ui.KEYS['parts'] and self.rows:
+                elif key in ui.KEYS['parts'] and self.state.rows:
                     self.parts_view(self._message())
-                elif key in ui.KEYS['reply'] and self.rows:
+                elif key in ui.KEYS['reply'] and self.state.rows:
                     message = self._message()
                     self.compose(compose.reply(message, self._render_body(message), self.config))
-                elif key in ui.KEYS['reply_all'] and self.rows:
+                elif key in ui.KEYS['reply_all'] and self.state.rows:
                     message = self._message()
                     self.compose(compose.reply(message, self._render_body(message), self.config, all_recipients=True))
-                elif key in ui.KEYS['forward'] and self.rows:
+                elif key in ui.KEYS['forward'] and self.state.rows:
                     message = self._message()
                     self.compose(compose.forward(message, self._render_body(message), self.config))
-                elif key in ui.KEYS['delete'] and self.rows:
+                elif key in ui.KEYS['delete'] and self.state.rows:
                     self.mark_deleted()
-                elif key in ui.KEYS['undelete'] and self.rows:
+                elif key in ui.KEYS['undelete'] and self.state.rows:
                     self.unmark_deleted()
-                elif key in ui.KEYS['flag'] and self.rows:
-                    assert self.index is not None
-                    item = self.rows[self.selected].message
-                    self.index.set_flags(
+                elif key in ui.KEYS['flag'] and self.state.rows:
+                    item = self.state.selected_message
+                    self.state.index.set_flags(
                         item.key, remove='F' if 'F' in item.flags else '', add='' if 'F' in item.flags else 'F'
                     )
-                    self.reload_cached()
-                elif key in ui.KEYS['unread'] and self.rows:
-                    assert self.index is not None
-                    self.index.set_flags(self.rows[self.selected].message.key, remove='S')
-                    self.reload_cached()
+                    self.state.reload_cached()
+                elif key in ui.KEYS['unread'] and self.state.rows:
+                    self.state.index.set_flags(self.state.selected_message.key, remove='S')
+                    self.state.reload_cached()
                 elif key in ui.KEYS['resume']:
                     self.resume()
         finally:
-            if self.index:
-                self.index.close()
+            for state in self.maildirs.values():
+                state.index.close()
             self.mime.close()

@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 from . import ui
-from .app import App
+from .app import App, MaildirState
 from .config import ConfigError, load_config
 
 
@@ -23,7 +23,8 @@ def main(argv: list[str] | None = None) -> int:
 
         def run(screen: curses.window) -> None:
             theme = ui.initialize_colors(screen, config.colors)
-            App(screen, config, selected, theme).run()
+            state = MaildirState.open(selected)
+            App(screen, config, state, theme).run()
 
         curses.wrapper(run)
     except (ConfigError, OSError, RuntimeError) as exc:
