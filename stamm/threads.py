@@ -38,10 +38,10 @@ def build_threads(messages: list[IndexedMessage]) -> list[ThreadRow]:
                 current.message = message
             else:
                 # A duplicate Message-ID must not hide a visible message.
-                current = _Node(f"duplicate:{index}", message)
+                current = _Node(f'duplicate:{index}', message)
                 anonymous.append(current)
         else:
-            current = _Node(f"anonymous:{index}", message)
+            current = _Node(f'anonymous:{index}', message)
             anonymous.append(current)
         current_nodes.append(current)
 
@@ -70,7 +70,7 @@ def build_threads(messages: list[IndexedMessage]) -> list[ThreadRow]:
     roots = [item for item in all_nodes if item.parent is None]
 
     def freshness(item: _Node) -> float:
-        own = item.message.timestamp if item.message else float("-inf")
+        own = item.message.timestamp if item.message else float('-inf')
         return max([own, *(freshness(child) for child in item.children)])
 
     roots.sort(key=freshness)

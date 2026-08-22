@@ -3,17 +3,16 @@
 from __future__ import annotations
 
 import curses
+import tempfile
 from email.message import EmailMessage
 from pathlib import Path
-import tempfile
 
-from . import compose, delivery
+from . import compose, delivery, ui
 from .config import Config
 from .index import IndexedMessage, MessageIndex
 from .message import header_block, parse_message, select_body
 from .mime import MimeManager, part_rows, save_part
 from .threads import ThreadRow, build_threads
-from . import ui
 
 
 class App:
@@ -25,7 +24,7 @@ class App:
         self.rows: list[ThreadRow] = []
         self.selected = 0
         self.index_offset = 0
-        self.notice = ""
+        self.notice = ''
         self.mime = MimeManager(config)
         self.pending_delete: dict[Path, set[str]] = {}
 
@@ -61,20 +60,18 @@ class App:
     def draw_index(self) -> None:
         self.screen.erase()
         height, width = self.screen.getmaxyx()
-        ui.put(self.screen, 0, 0, f"Stamm — {self.maildir}".ljust(width), width, curses.A_REVERSE)
+        ui.put(self.screen, 0, 0, f'Stamm — {self.maildir}'.ljust(width), width, curses.A_REVERSE)
         visible = max(1, height - 2)
-        self.index_offset = ui.viewport_start(
-            self.selected, len(self.rows), visible, self.index_offset
-        )
+        self.index_offset = ui.viewport_start(self.selected, len(self.rows), visible, self.index_offset)
         start = self.index_offset
-        for y, row in enumerate(self.rows[start:start + visible], 1):
+        for y, row in enumerate(self.rows[start : start + visible], 1):
             item = row.message
             marked = item.key in self.pending_delete.get(self.maildir.resolve(), set())
-            flags = ("D" if marked else ("N" if "S" not in item.flags else " ")) + ("F" if "F" in item.flags else " ")
+            flags = ('D' if marked else ('N' if 'S' not in item.flags else ' ')) + ('F' if 'F' in item.flags else ' ')
             sender = ui.format_sender(item.sender)[:20]
-            subject = "  " * row.depth + item.subject.replace("\n", " ")
+            subject = '  ' * row.depth + item.subject.replace('\n', ' ')
             date = ui.format_index_date(item.timestamp)
-            line = f"{date} {flags:2} {sender:20}  {subject}"
+            line = f'{date} {flags:2} {sender:20}  {subject}'
             selected = start + y - 1 == self.selected
             attr = ui.index_indicator_color() if selected else 0
             ui.put(self.screen, y, 0, line.ljust(width), width, attr)
@@ -83,9 +80,9 @@ class App:
                 ui.put(self.screen, y, 13, flags, 2, ui.index_flags_color())
                 ui.put(self.screen, y, 16, sender, 20, ui.index_sender_color())
         count = len(self.rows)
-        summary = f" {count} {'message' if count == 1 else 'messages'}"
+        summary = f' {count} {"message" if count == 1 else "messages"}'
         ui.status(self.screen, self.notice or summary)
-        self.notice = ""
+        self.notice = ''
 
     def _message(self) -> EmailMessage:
         item = self.rows[self.selected].message
@@ -94,22 +91,22 @@ class App:
     def _render_body(self, message: EmailMessage) -> str:
         part = select_body(message, self.config)
         if part is None:
-            return "[No displayable body. Press v to inspect MIME parts.]"
+            return '[No displayable body. Press v to inspect MIME parts.]'
         try:
             return self.mime.display(part)
         except Exception as exc:
-            return f"[Cannot display {part.get_content_type()}: {exc}]"
+            return f'[Cannot display {part.get_content_type()}: {exc}]'
 
     def mark_deleted(self) -> None:
         if not self.rows:
             return
         folder = self.maildir.resolve()
         if folder == self.config.trash.resolve():
-            self.notice = "messages in Trash cannot be marked for deletion"
+            self.notice = 'messages in Trash cannot be marked for deletion'
             return
         key = self.rows[self.selected].message.key
         self.pending_delete.setdefault(folder, set()).add(key)
-        self.notice = "marked for deletion"
+        self.notice = 'marked for deletion'
         self.selected = min(len(self.rows) - 1, self.selected + 1)
 
     def unmark_deleted(self) -> None:
@@ -121,7 +118,7 @@ class App:
             keys.discard(self.rows[self.selected].message.key)
             if not keys:
                 self.pending_delete.pop(folder, None)
-        self.notice = "deletion mark removed"
+        self.notice = 'deletion mark removed'
         self.selected = min(len(self.rows) - 1, self.selected + 1)
 
     def purge_deleted(self) -> list[str]:
@@ -141,9 +138,9 @@ class App:
                             index.move_to(key, self.config.trash)
                         keys.discard(key)
                     except (OSError, ValueError) as exc:
-                        errors.append(f"{folder}: {exc}")
+                        errors.append(f'{folder}: {exc}')
             except OSError as exc:
-                errors.append(f"{folder}: {exc}")
+                errors.append(f'{folder}: {exc}')
             finally:
                 if owned_index and index is not None:
                     index.close()
@@ -158,41 +155,41 @@ class App:
         count = sum(len(keys) for keys in self.pending_delete.values())
         if not count:
             return True
-        answer = ui.choose(self.screen, f"Move {count} deleted message(s) to Trash?", "yn")
-        if answer == "n":
+        answer = ui.choose(self.screen, f'Move {count} deleted message(s) to Trash?', 'yn')
+        if answer == 'n':
             return True
         errors = self.purge_deleted()
         if errors:
-            ui.pager(self.screen, "Cannot move deleted messages", "\n".join(errors))
+            ui.pager(self.screen, 'Cannot move deleted messages', '\n'.join(errors))
             return False
         return True
 
     def message_view(self) -> None:
         assert self.index
         item = self.rows[self.selected].message
-        if "S" not in item.flags:
-            self.index.set_flags(item.key, add="S")
+        if 'S' not in item.flags:
+            self.index.set_flags(item.key, add='S')
             self.reload_cached()
             item = self.rows[self.selected].message
         message = self._message()
         body = self._render_body(message)
         while True:
-            key = ui.pager(self.screen, item.subject, header_block(message) + "\n\n" + body)
-            if key in ui.KEYS["back"]:
+            key = ui.pager(self.screen, item.subject, header_block(message) + '\n\n' + body)
+            if key in ui.KEYS['back']:
                 return
-            if key in ui.KEYS["parts"]:
+            if key in ui.KEYS['parts']:
                 self.parts_view(message)
-            elif key in ui.KEYS["reply"]:
+            elif key in ui.KEYS['reply']:
                 self.compose(compose.reply(message, body, self.config))
-            elif key in ui.KEYS["reply_all"]:
+            elif key in ui.KEYS['reply_all']:
                 self.compose(compose.reply(message, body, self.config, all_recipients=True))
-            elif key in ui.KEYS["forward"]:
+            elif key in ui.KEYS['forward']:
                 self.compose(compose.forward(message, body, self.config))
 
     def show_opener_errors(self) -> None:
         errors = self.mime.reap()
         if errors:
-            ui.pager(self.screen, "External opener failed", "\n\n".join(errors))
+            ui.pager(self.screen, 'External opener failed', '\n\n'.join(errors))
 
     def parts_view(self, message: EmailMessage) -> None:
         rows = part_rows(message)
@@ -201,32 +198,34 @@ class App:
             self.show_opener_errors()
             self.screen.erase()
             height, width = self.screen.getmaxyx()
-            ui.put(self.screen, 0, 0, " MIME parts ".ljust(width), width, curses.A_REVERSE)
+            ui.put(self.screen, 0, 0, ' MIME parts '.ljust(width), width, curses.A_REVERSE)
             visible = max(1, height - 1)
             start = min(max(0, selected - visible + 1), selected)
-            for index, row in enumerate(rows[start:start + visible], 1):
+            for index, row in enumerate(rows[start : start + visible], 1):
                 attr = curses.A_REVERSE if start + index - 1 == selected else 0
-                ui.put(self.screen, index, 0, "  " * row.depth + row.label, width, attr)
+                ui.put(self.screen, index, 0, '  ' * row.depth + row.label, width, attr)
             self.screen.refresh()
             key = self.screen.getch()
-            if key in ui.KEYS["back"]:
+            if key in ui.KEYS['back']:
                 return
-            if key in ui.KEYS["down"]:
+            if key in ui.KEYS['down']:
                 selected = min(len(rows) - 1, selected + 1)
-            elif key in ui.KEYS["up"]:
+            elif key in ui.KEYS['up']:
                 selected = max(0, selected - 1)
-            elif key in ui.KEYS["open"] and not rows[selected].part.is_multipart():
+            elif key in ui.KEYS['open'] and not rows[selected].part.is_multipart():
                 try:
                     self.mime.open(rows[selected].part)
-                    self.notice = "opened externally"
+                    self.notice = 'opened externally'
                 except Exception as exc:
                     self.notice = str(exc)
-            elif key in ui.KEYS["save"] and not rows[selected].part.is_multipart():
-                value = ui.prompt(self.screen, "Save to: ", rows[selected].part.get_filename() or "", complete_paths=True)
+            elif key in ui.KEYS['save'] and not rows[selected].part.is_multipart():
+                value = ui.prompt(
+                    self.screen, 'Save to: ', rows[selected].part.get_filename() or '', complete_paths=True
+                )
                 if value:
                     try:
                         path = save_part(rows[selected].part, Path(value))
-                        self.notice = f"saved {path}"
+                        self.notice = f'saved {path}'
                     except OSError as exc:
                         self.notice = str(exc)
 
@@ -240,44 +239,44 @@ class App:
             finally:
                 curses.reset_prog_mode()
                 self.screen.refresh()
-            action = ui.choose(self.screen, "Compose: send, edit, draft, discard", "sedx")
-            if action == "e":
+            action = ui.choose(self.screen, 'Compose: send, edit, draft, discard', 'sedx')
+            if action == 'e':
                 continue
-            if action == "x":
+            if action == 'x':
                 return
             try:
-                if action == "d":
+                if action == 'd':
                     delivery.save_draft(data, self.config)
-                    self.notice = "draft saved"
+                    self.notice = 'draft saved'
                 else:
                     delivery.send(data, self.config)
-                    self.notice = "message sent"
+                    self.notice = 'message sent'
                 if old_draft:
                     old_draft.unlink(missing_ok=True)
                 return
             except (OSError, delivery.DeliveryError) as exc:
                 self.notice = str(exc)
-                ui.pager(self.screen, "Delivery failed", str(exc))
-                retry = ui.choose(self.screen, "Delivery failed: edit, draft, discard", "edx")
-                if retry == "e":
+                ui.pager(self.screen, 'Delivery failed', str(exc))
+                retry = ui.choose(self.screen, 'Delivery failed: edit, draft, discard', 'edx')
+                if retry == 'e':
                     continue
-                if retry == "d":
+                if retry == 'd':
                     try:
                         delivery.save_draft(data, self.config)
                         if old_draft:
                             old_draft.unlink(missing_ok=True)
-                        self.notice = "draft saved"
+                        self.notice = 'draft saved'
                     except OSError as draft_exc:
                         self.notice = str(draft_exc)
                 return
 
     def resume(self) -> None:
         if self.maildir.resolve() != self.config.drafts.resolve() or not self.rows:
-            self.notice = "resume is available only in the Drafts Maildir"
+            self.notice = 'resume is available only in the Drafts Maildir'
             return
         old_path = self.maildir / self.rows[self.selected].message.path
         message = self._message()
-        with tempfile.TemporaryDirectory(prefix="stamm-draft-") as workspace:
+        with tempfile.TemporaryDirectory(prefix='stamm-draft-') as workspace:
             self.compose(delivery.resume_draft(message, Path(workspace)), old_path)
         self.refresh()
 
@@ -291,51 +290,55 @@ class App:
                 self.show_opener_errors()
                 self.draw_index()
                 key = self.screen.getch()
-                if key in ui.KEYS["back"]:
+                if key in ui.KEYS['back']:
                     if self.confirm_exit():
                         return
                     continue
-                if key in ui.KEYS["down"] and self.rows:
+                if key in ui.KEYS['down'] and self.rows:
                     self.selected = min(len(self.rows) - 1, self.selected + 1)
-                elif key in ui.KEYS["up"] and self.rows:
+                elif key in ui.KEYS['up'] and self.rows:
                     self.selected = max(0, self.selected - 1)
-                elif key in ui.KEYS["open"] and self.rows:
+                elif key in ui.KEYS['open'] and self.rows:
                     self.message_view()
-                elif key in ui.KEYS["refresh"]:
+                elif key in ui.KEYS['refresh']:
                     self.refresh()
-                    self.notice = "refreshed"
-                elif key in ui.KEYS["change"]:
-                    value = ui.prompt(self.screen, "Maildir: ", str(self.config.root) + "/", complete_paths=True)
+                    self.notice = 'refreshed'
+                elif key in ui.KEYS['change']:
+                    value = ui.prompt(self.screen, 'Maildir: ', str(self.config.root) + '/', complete_paths=True)
                     if value:
                         try:
                             self.open_maildir(Path(value))
                         except (OSError, ValueError) as exc:
                             self.notice = str(exc)
-                elif key in ui.KEYS["compose"]:
+                elif key in ui.KEYS['compose']:
                     self.compose(compose.new(self.config))
-                elif key in ui.KEYS["parts"] and self.rows:
+                elif key in ui.KEYS['parts'] and self.rows:
                     self.parts_view(self._message())
-                elif key in ui.KEYS["reply"] and self.rows:
+                elif key in ui.KEYS['reply'] and self.rows:
                     message = self._message()
                     self.compose(compose.reply(message, self._render_body(message), self.config))
-                elif key in ui.KEYS["reply_all"] and self.rows:
+                elif key in ui.KEYS['reply_all'] and self.rows:
                     message = self._message()
                     self.compose(compose.reply(message, self._render_body(message), self.config, all_recipients=True))
-                elif key in ui.KEYS["forward"] and self.rows:
+                elif key in ui.KEYS['forward'] and self.rows:
                     message = self._message()
                     self.compose(compose.forward(message, self._render_body(message), self.config))
-                elif key in ui.KEYS["delete"] and self.rows:
+                elif key in ui.KEYS['delete'] and self.rows:
                     self.mark_deleted()
-                elif key in ui.KEYS["undelete"] and self.rows:
+                elif key in ui.KEYS['undelete'] and self.rows:
                     self.unmark_deleted()
-                elif key in ui.KEYS["flag"] and self.rows:
+                elif key in ui.KEYS['flag'] and self.rows:
+                    assert self.index is not None
                     item = self.rows[self.selected].message
-                    self.index.set_flags(item.key, remove="F" if "F" in item.flags else "", add="" if "F" in item.flags else "F")  # type: ignore[union-attr]
+                    self.index.set_flags(
+                        item.key, remove='F' if 'F' in item.flags else '', add='' if 'F' in item.flags else 'F'
+                    )
                     self.reload_cached()
-                elif key in ui.KEYS["unread"] and self.rows:
-                    self.index.set_flags(self.rows[self.selected].message.key, remove="S")  # type: ignore[union-attr]
+                elif key in ui.KEYS['unread'] and self.rows:
+                    assert self.index is not None
+                    self.index.set_flags(self.rows[self.selected].message.key, remove='S')
                     self.reload_cached()
-                elif key in ui.KEYS["resume"]:
+                elif key in ui.KEYS['resume']:
                     self.resume()
         finally:
             if self.index:

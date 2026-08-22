@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime
 import unittest
+from datetime import datetime
 
 from stamm.ui import format_index_date, format_sender, viewport_start, wrap_text
 
@@ -9,32 +9,32 @@ from stamm.ui import format_index_date, format_sender, viewport_start, wrap_text
 class IndexDateTests(unittest.TestCase):
     def test_recent_date_uses_time(self) -> None:
         timestamp = datetime(2026, 4, 5, 14, 30).astimezone().timestamp()
-        self.assertEqual(format_index_date(timestamp, timestamp + 60), "Apr 05 14:30")
+        self.assertEqual(format_index_date(timestamp, timestamp + 60), 'Apr 05 14:30')
 
     def test_old_date_uses_year(self) -> None:
         timestamp = datetime(2024, 4, 5, 14, 30).astimezone().timestamp()
         value = format_index_date(timestamp, timestamp + 366 * 24 * 60 * 60)
-        self.assertEqual(value, "2024 Apr 05 ")
+        self.assertEqual(value, '2024 Apr 05 ')
         self.assertEqual(len(value), 12)
 
 
 class SenderFormatTests(unittest.TestCase):
     def test_name_hides_email_address(self) -> None:
-        self.assertEqual(format_sender("Anton Bobrov <anton@example.com>"), "Anton Bobrov")
+        self.assertEqual(format_sender('Anton Bobrov <anton@example.com>'), 'Anton Bobrov')
 
     def test_address_is_used_when_name_is_missing(self) -> None:
-        self.assertEqual(format_sender("anton@example.com"), "anton@example.com")
+        self.assertEqual(format_sender('anton@example.com'), 'anton@example.com')
 
 
 class TextWrapTests(unittest.TestCase):
     def test_long_lines_wrap_at_screen_width(self) -> None:
-        self.assertEqual(wrap_text("abcdefgh", 3), ["abc", "def", "gh"])
+        self.assertEqual(wrap_text('abcdefgh', 3), ['abc', 'def', 'gh'])
 
     def test_blank_lines_are_preserved(self) -> None:
-        self.assertEqual(wrap_text("one\n\ntwo", 10), ["one", "", "two"])
+        self.assertEqual(wrap_text('one\n\ntwo', 10), ['one', '', 'two'])
 
     def test_wide_characters_use_two_terminal_cells(self) -> None:
-        self.assertEqual(wrap_text("界界a", 3), ["界", "界a"])
+        self.assertEqual(wrap_text('界界a', 3), ['界', '界a'])
 
 
 class ViewportTests(unittest.TestCase):
@@ -61,5 +61,5 @@ class ViewportTests(unittest.TestCase):
         self.assertEqual(viewport_start(199, 200, 100, 0), 110)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()
