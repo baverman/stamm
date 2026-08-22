@@ -19,6 +19,7 @@ KEYS = {
     'open': (10, 13, curses.KEY_ENTER),
     'back': (ord('q'),),
     'change': (ord('c'),),
+    'command': (ord(':'),),
     'compose': (ord('m'),),
     'reply': (ord('r'),),
     'reply_all': (ord('g'),),
@@ -248,7 +249,7 @@ def prompt(
         status(window, label + value, status_attr)
         key = window.get_wch()
         if key in ('\n', '\r'):
-            return os.path.expandvars(os.path.expanduser(value))
+            return os.path.expandvars(os.path.expanduser(value)) if complete_paths else value
         if key == '\x1b':
             return None
         if key in ('\b', '\x7f') or key == curses.KEY_BACKSPACE:

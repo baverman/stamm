@@ -6,6 +6,7 @@ import curses
 import shlex
 import subprocess
 import tempfile
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from email.message import EmailMessage
 from pathlib import Path
@@ -15,16 +16,38 @@ from .config import Config
 from .index import INITIAL_MESSAGE_LIMIT, IndexedMessage, MessageIndex
 from .message import header_block, parse_message, select_body
 from .mime import MimeManager, part_rows, save_part
+from .search import SearchTerm, matches, parse_query
 from .threads import ThreadRow, build_threads
 
 
 @dataclass
-class MaildirState:
-    path: Path
-    index: MessageIndex
+class IndexView(ABC):
     rows: list[ThreadRow]
     selected: int
     offset: int
+
+    @property
+    @abstractmethod
+    def title(self) -> str: ...
+
+    @property
+    def selected_message(self) -> IndexedMessage:
+        return self.rows[self.selected].message
+
+    def select_next(self) -> None:
+        self.selected = min(len(self.rows) - 1, self.selected + 1)
+
+    def select_previous(self) -> None:
+        self.selected = max(0, self.selected - 1)
+
+    @abstractmethod
+    def reload(self) -> None: ...
+
+
+@dataclass
+class MaildirState(IndexView):
+    path: Path
+    index: MessageIndex
     pending_delete: set[str]
 
     @classmethod
@@ -35,11 +58,11 @@ class MaildirState:
         except Exception:
             index.close()
             raise
-        return cls(path, index, rows, max(0, len(rows) - 1), 0, set())
+        return cls(rows, max(0, len(rows) - 1), 0, path, index, set())
 
     @property
-    def selected_message(self) -> IndexedMessage:
-        return self.rows[self.selected].message
+    def title(self) -> str:
+        return f'Stamm — {self.path}'
 
     def load_rows(self, messages: list[IndexedMessage]) -> None:
         key = self.selected_message.key if self.rows else None
@@ -52,16 +75,14 @@ class MaildirState:
     def refresh(self) -> None:
         self.load_rows(self.index.refresh())
 
-    def reload_cached(self) -> None:
+    def reload(self) -> None:
         self.load_rows(self.index.messages())
 
-    def mark_deleted(self) -> None:
-        self.pending_delete.add(self.selected_message.key)
-        self.selected = min(len(self.rows) - 1, self.selected + 1)
+    def mark_deleted(self, key: str) -> None:
+        self.pending_delete.add(key)
 
-    def unmark_deleted(self) -> None:
-        self.pending_delete.discard(self.selected_message.key)
-        self.selected = min(len(self.rows) - 1, self.selected + 1)
+    def unmark_deleted(self, key: str) -> None:
+        self.pending_delete.discard(key)
 
     def purge_deleted(self, trash: Path) -> list[str]:
         if not self.pending_delete:
@@ -80,6 +101,36 @@ class MaildirState:
         return errors
 
 
+@dataclass
+class SearchState(IndexView):
+    source: MaildirState
+    query: str
+    terms: list[SearchTerm]
+
+    @classmethod
+    def create(cls, source: MaildirState, query: str, terms: list[SearchTerm]) -> SearchState:
+        rows = [row for row in source.rows if matches(row.message, terms)]
+        return cls(rows, 0, 0, source, query, terms)
+
+    @property
+    def title(self) -> str:
+        return f'Search — {self.query}'
+
+    def rebuild(self) -> None:
+        key = self.selected_message.key if self.rows else None
+        self.rows = [row for row in self.source.rows if matches(row.message, self.terms)]
+        if key:
+            fallback = min(self.selected, max(0, len(self.rows) - 1))
+            self.selected = next((i for i, row in enumerate(self.rows) if row.message.key == key), fallback)
+        else:
+            self.selected = min(self.selected, max(0, len(self.rows) - 1))
+        self.offset = min(self.offset, max(0, len(self.rows) - 1))
+
+    def reload(self) -> None:
+        self.source.reload()
+        self.rebuild()
+
+
 class App:
     def __init__(
         self,
@@ -91,6 +142,7 @@ class App:
         self.screen = screen
         self.config = config
         self.state = state
+        self.view: IndexView = state
         self.maildirs = {state.path.resolve(): state}
         self.notice = ''
         self.mime = MimeManager(config)
@@ -103,9 +155,11 @@ class App:
             state = MaildirState.open(path)
             self.maildirs[key] = state
             self.state = state
+            self.view = state
             self.reconcile()
             return
         self.state = state
+        self.view = state
 
     def reconcile(self) -> None:
         self.notice = 'reconciling...' if self.state.rows else 'indexing...'
@@ -117,17 +171,17 @@ class App:
         self.screen.erase()
         height, width = self.screen.getmaxyx()
         theme = self.theme
-        ui.put(self.screen, 0, 0, f'Stamm — {self.state.path}'.ljust(width), width, theme.header)
+        ui.put(self.screen, 0, 0, self.view.title.ljust(width), width, theme.header)
         visible = max(1, height - 2)
-        self.state.offset = ui.viewport_start(self.state.selected, len(self.state.rows), visible, self.state.offset)
-        start = self.state.offset
+        self.view.offset = ui.viewport_start(self.view.selected, len(self.view.rows), visible, self.view.offset)
+        start = self.view.offset
         deleted = self.state.pending_delete
         date_attr = theme.index_date
         flags_attr = theme.index_flags
         sender_attr = theme.index_sender
         subject_attr = theme.index_subject
         indicator_attr = theme.indicator
-        for y, row in enumerate(self.state.rows[start : start + visible], 1):
+        for y, row in enumerate(self.view.rows[start : start + visible], 1):
             item = row.message
             marked = item.key in deleted
             flags = ''.join(
@@ -142,7 +196,7 @@ class App:
             subject = '  ' * row.depth + item.subject.replace('\n', ' ')
             date = ui.format_index_date(item.timestamp)
             line = f'{date} {flags:3} {sender:20}  {subject}'
-            selected = start + y - 1 == self.state.selected
+            selected = start + y - 1 == self.view.selected
             attr = indicator_attr if selected else 0
             ui.put(self.screen, y, 0, line.ljust(width), width, attr)
             if not selected:
@@ -150,14 +204,42 @@ class App:
                 ui.put(self.screen, y, 13, flags, 3, flags_attr)
                 ui.put(self.screen, y, 17, sender, 20, sender_attr)
                 ui.put(self.screen, y, 39, subject, max(0, width - 39), subject_attr)
-        count = len(self.state.rows)
+        count = len(self.view.rows)
         summary = f' {count} {"message" if count == 1 else "messages"}'
         ui.status(self.screen, self.notice or summary, theme.status)
         self.notice = ''
 
     def _message(self) -> EmailMessage:
-        item = self.state.selected_message
+        item = self.view.selected_message
         return parse_message(self.state.path / item.path)
+
+    def _reload_view(self) -> None:
+        view = getattr(self, 'view', self.state)
+        reload = getattr(view, 'reload', None)
+        if reload is None:
+            reload = getattr(view, 'reload_cached')
+        reload()
+        if view is not self.state and not view.rows:
+            self.view = self.state
+            self.notice = 'no results'
+
+    def run_command(self, command: str) -> None:
+        parts = command.split(maxsplit=1)
+        name = parts[0] if parts else ''
+        if name != 'search':
+            self.notice = f'unknown command: {name}'
+            return
+        query = parts[1].strip() if len(parts) == 2 else ''
+        try:
+            terms = parse_query(query)
+        except ValueError as exc:
+            self.notice = str(exc)
+            return
+        search = SearchState.create(self.state, query, terms)
+        if search.rows:
+            self.view = search
+        else:
+            self.notice = 'no results'
 
     def _render_body(self, message: EmailMessage) -> str:
         part = select_body(message, self.config)
@@ -169,18 +251,20 @@ class App:
             return f'[Cannot display {part.get_content_type()}: {exc}]'
 
     def mark_deleted(self) -> None:
-        if not self.state.rows:
+        if not self.view.rows:
             return
         if self.state.path.resolve() == self.config.trash.resolve():
             self.notice = 'messages in Trash cannot be marked for deletion'
             return
-        self.state.mark_deleted()
+        self.state.mark_deleted(self.view.selected_message.key)
+        self.view.select_next()
         self.notice = 'marked for deletion'
 
     def unmark_deleted(self) -> None:
-        if not self.state.rows:
+        if not self.view.rows:
             return
-        self.state.unmark_deleted()
+        self.state.unmark_deleted(self.view.selected_message.key)
+        self.view.select_next()
         self.notice = 'deletion mark removed'
 
     def purge_deleted(self) -> list[str]:
@@ -208,11 +292,13 @@ class App:
         return True
 
     def message_view(self) -> None:
-        item = self.state.selected_message
+        item = self.view.selected_message
         if 'S' not in item.flags:
             self.state.index.set_flags(item.key, add='S')
-            self.state.reload_cached()
-            item = self.state.selected_message
+            self._reload_view()
+            if not self.view.rows:
+                return
+            item = self.view.selected_message
         message = self._message()
         body = self._render_body(message)
         while True:
@@ -350,7 +436,7 @@ class App:
                     if replied_key:
                         try:
                             self.state.index.set_flags(replied_key, add='R')
-                            self.state.reload_cached()
+                            self._reload_view()
                         except (OSError, KeyError) as flag_exc:
                             self.notice = f'message sent; cannot mark replied: {flag_exc}'
                 if old_draft:
@@ -380,14 +466,19 @@ class App:
                 return
 
     def resume(self) -> None:
-        if self.state.path.resolve() != self.config.drafts.resolve() or not self.state.rows:
+        if self.state.path.resolve() != self.config.drafts.resolve() or not self.view.rows:
             self.notice = 'resume is available only in the Drafts Maildir'
             return
-        old_path = self.state.path / self.state.selected_message.path
+        old_path = self.state.path / self.view.selected_message.path
         message = self._message()
         with tempfile.TemporaryDirectory(prefix='stamm-draft-') as workspace:
             self.compose(delivery.resume_draft(message, Path(workspace)), old_path)
         self.state.refresh()
+        if self.view is not self.state:
+            self.view.reload()
+            if not self.view.rows:
+                self.view = self.state
+                self.notice = 'no results'
 
     def run(self) -> None:
         self.screen.keypad(True)
@@ -399,17 +490,24 @@ class App:
                 self.draw_index()
                 key = self.screen.getch()
                 if key in ui.KEYS['back']:
+                    if self.view is not self.state:
+                        self.view = self.state
+                        continue
                     if self.confirm_exit():
                         return
                     continue
-                if key in ui.KEYS['down'] and self.state.rows:
-                    self.state.selected = min(len(self.state.rows) - 1, self.state.selected + 1)
-                elif key in ui.KEYS['up'] and self.state.rows:
-                    self.state.selected = max(0, self.state.selected - 1)
-                elif key in ui.KEYS['open'] and self.state.rows:
+                if key in ui.KEYS['down'] and self.view.rows:
+                    self.view.select_next()
+                elif key in ui.KEYS['up'] and self.view.rows:
+                    self.view.select_previous()
+                elif key in ui.KEYS['open'] and self.view.rows:
                     self.message_view()
-                elif key in ui.KEYS['refresh']:
+                elif key in ui.KEYS['refresh'] and self.view is self.state:
                     self.manual_refresh()
+                elif key in ui.KEYS['command']:
+                    value = ui.prompt(self.screen, ':', complete_paths=False, status_attr=self.theme.status)
+                    if value is not None:
+                        self.run_command(value)
                 elif key in ui.KEYS['change']:
                     value = ui.prompt(
                         self.screen,
@@ -425,36 +523,36 @@ class App:
                             self.notice = str(exc)
                 elif key in ui.KEYS['compose']:
                     self.compose(compose.new(self.config))
-                elif key in ui.KEYS['parts'] and self.state.rows:
+                elif key in ui.KEYS['parts'] and self.view.rows:
                     self.parts_view(self._message())
-                elif key in ui.KEYS['reply'] and self.state.rows:
+                elif key in ui.KEYS['reply'] and self.view.rows:
                     message = self._message()
                     self.compose(
                         compose.reply(message, self._render_body(message), self.config),
-                        replied_key=self.state.selected_message.key,
+                        replied_key=self.view.selected_message.key,
                     )
-                elif key in ui.KEYS['reply_all'] and self.state.rows:
+                elif key in ui.KEYS['reply_all'] and self.view.rows:
                     message = self._message()
                     self.compose(
                         compose.reply(message, self._render_body(message), self.config, all_recipients=True),
-                        replied_key=self.state.selected_message.key,
+                        replied_key=self.view.selected_message.key,
                     )
-                elif key in ui.KEYS['forward'] and self.state.rows:
+                elif key in ui.KEYS['forward'] and self.view.rows:
                     message = self._message()
                     self.compose(compose.forward(message, self._render_body(message), self.config))
-                elif key in ui.KEYS['delete'] and self.state.rows:
+                elif key in ui.KEYS['delete'] and self.view.rows:
                     self.mark_deleted()
-                elif key in ui.KEYS['undelete'] and self.state.rows:
+                elif key in ui.KEYS['undelete'] and self.view.rows:
                     self.unmark_deleted()
-                elif key in ui.KEYS['flag'] and self.state.rows:
-                    item = self.state.selected_message
+                elif key in ui.KEYS['flag'] and self.view.rows:
+                    item = self.view.selected_message
                     self.state.index.set_flags(
                         item.key, remove='F' if 'F' in item.flags else '', add='' if 'F' in item.flags else 'F'
                     )
-                    self.state.reload_cached()
-                elif key in ui.KEYS['unread'] and self.state.rows:
-                    self.state.index.set_flags(self.state.selected_message.key, remove='S')
-                    self.state.reload_cached()
+                    self._reload_view()
+                elif key in ui.KEYS['unread'] and self.view.rows:
+                    self.state.index.set_flags(self.view.selected_message.key, remove='S')
+                    self._reload_view()
                 elif key in ui.KEYS['resume']:
                     self.resume()
         finally:
