@@ -60,7 +60,7 @@ class App:
     def draw_index(self) -> None:
         self.screen.erase()
         height, width = self.screen.getmaxyx()
-        ui.put(self.screen, 0, 0, f'Stamm — {self.maildir}'.ljust(width), width, curses.A_REVERSE)
+        ui.put(self.screen, 0, 0, f'Stamm — {self.maildir}'.ljust(width), width, ui.role_color('header'))
         visible = max(1, height - 2)
         self.index_offset = ui.viewport_start(self.selected, len(self.rows), visible, self.index_offset)
         start = self.index_offset
@@ -79,6 +79,7 @@ class App:
                 ui.put(self.screen, y, 0, date, 12, ui.index_date_color())
                 ui.put(self.screen, y, 13, flags, 2, ui.index_flags_color())
                 ui.put(self.screen, y, 16, sender, 20, ui.index_sender_color())
+                ui.put(self.screen, y, 38, subject, max(0, width - 38), ui.role_color('index_subject'))
         count = len(self.rows)
         summary = f' {count} {"message" if count == 1 else "messages"}'
         ui.status(self.screen, self.notice or summary)
@@ -198,11 +199,11 @@ class App:
             self.show_opener_errors()
             self.screen.erase()
             height, width = self.screen.getmaxyx()
-            ui.put(self.screen, 0, 0, ' MIME parts '.ljust(width), width, curses.A_REVERSE)
+            ui.put(self.screen, 0, 0, ' MIME parts '.ljust(width), width, ui.role_color('header'))
             visible = max(1, height - 1)
             start = min(max(0, selected - visible + 1), selected)
             for index, row in enumerate(rows[start : start + visible], 1):
-                attr = curses.A_REVERSE if start + index - 1 == selected else 0
+                attr = ui.index_indicator_color() if start + index - 1 == selected else 0
                 ui.put(self.screen, index, 0, '  ' * row.depth + row.label, width, attr)
             self.screen.refresh()
             key = self.screen.getch()
@@ -281,7 +282,7 @@ class App:
         self.refresh()
 
     def run(self) -> None:
-        ui.initialize_colors(self.screen)
+        ui.initialize_colors(self.screen, self.config.colors)
         self.screen.keypad(True)
         curses.curs_set(0)
         try:

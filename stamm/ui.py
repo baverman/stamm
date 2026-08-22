@@ -10,6 +10,8 @@ from datetime import datetime
 from email.utils import parseaddr
 from pathlib import Path
 
+from .config import ColorConfig, ColorValue
+
 KEYS = {
     'down': (ord('j'), curses.KEY_DOWN),
     'up': (ord('k'), curses.KEY_UP),
@@ -31,60 +33,112 @@ KEYS = {
 }
 
 MONTHS = ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')
-DEFAULT_COLOR_PAIR = 1
-INDEX_DATE_COLOR_PAIR = 2
-INDEX_FLAGS_COLOR_PAIR = 3
-INDEX_INDICATOR_COLOR_PAIR = 4
-INDEX_SENDER_COLOR_PAIR = 5
+COLOR_ROLES = (
+    'normal',
+    'header',
+    'status',
+    'indicator',
+    'index_date',
+    'index_flags',
+    'index_sender',
+    'index_subject',
+)
+COLOR_INDEXES = {
+    'black': 0,
+    'red': 1,
+    'green': 2,
+    'yellow': 3,
+    'blue': 4,
+    'magenta': 5,
+    'cyan': 6,
+    'white': 7,
+    'bright-black': 8,
+    'bright-red': 9,
+    'bright-green': 10,
+    'bright-yellow': 11,
+    'bright-blue': 12,
+    'bright-magenta': 13,
+    'bright-cyan': 14,
+    'bright-white': 15,
+}
+COLOR_ATTRIBUTES = {
+    'bold': curses.A_BOLD,
+    'dim': curses.A_DIM,
+    'reverse': curses.A_REVERSE,
+    'underline': curses.A_UNDERLINE,
+    'standout': curses.A_STANDOUT,
+}
 _default_color_attr = 0
-_index_date_color_attr = 0
-_index_flags_color_attr = 0
-_index_indicator_color_attr = curses.A_REVERSE
-_index_sender_color_attr = 0
+_role_attrs: dict[str, int] = {role: 0 for role in COLOR_ROLES}
 
 
-def initialize_colors(window: curses.window) -> None:
-    """Use the terminal's natural colors and initialize index colors."""
-    global \
-        _default_color_attr, \
-        _index_date_color_attr, \
-        _index_flags_color_attr, \
-        _index_indicator_color_attr, \
-        _index_sender_color_attr
+def _color_index(value: ColorValue) -> int:
+    if value == 'default':
+        return -1
+    index = COLOR_INDEXES[value] if isinstance(value, str) else value
+    if index >= curses.COLORS:
+        raise RuntimeError(f'terminal supports {curses.COLORS} colors, but color index {index} was requested')
+    return index
+
+
+def _attributes(names: tuple[str, ...]) -> int:
+    result = 0
+    for name in names:
+        result |= COLOR_ATTRIBUTES[name]
+    return result
+
+
+def initialize_colors(window: curses.window, colors: ColorConfig) -> None:
+    """Initialize configured terminal colors and role attributes."""
+    global _default_color_attr, _role_attrs
+    _role_attrs = {role: _attributes(colors.resolved(role).attrs) for role in COLOR_ROLES}
     if not curses.has_colors():
+        _default_color_attr = _role_attrs['normal']
         return
     try:
         curses.start_color()
         curses.use_default_colors()
-        curses.init_pair(DEFAULT_COLOR_PAIR, -1, -1)
-        curses.init_pair(INDEX_DATE_COLOR_PAIR, curses.COLOR_BLUE, -1)
-        curses.init_pair(INDEX_FLAGS_COLOR_PAIR, curses.COLOR_RED, -1)
-        curses.init_pair(INDEX_INDICATOR_COLOR_PAIR, curses.COLOR_BLACK, curses.COLOR_WHITE)
-        curses.init_pair(INDEX_SENDER_COLOR_PAIR, curses.COLOR_GREEN, -1)
-    except curses.error:
-        return
-    _default_color_attr = curses.color_pair(DEFAULT_COLOR_PAIR)
-    _index_date_color_attr = curses.color_pair(INDEX_DATE_COLOR_PAIR)
-    _index_flags_color_attr = curses.color_pair(INDEX_FLAGS_COLOR_PAIR) | curses.A_BOLD
-    _index_indicator_color_attr = curses.color_pair(INDEX_INDICATOR_COLOR_PAIR)
-    _index_sender_color_attr = curses.color_pair(INDEX_SENDER_COLOR_PAIR)
+        pairs: dict[tuple[int, int], int] = {}
+        next_pair = 1
+        for role in COLOR_ROLES:
+            style = colors.resolved(role)
+            assert style.fg is not None and style.bg is not None
+            foreground = _color_index(style.fg)
+            background = _color_index(style.bg)
+            colors_key = (foreground, background)
+            pair = pairs.get(colors_key)
+            if pair is None:
+                if next_pair >= curses.COLOR_PAIRS:
+                    raise RuntimeError('terminal does not provide enough color pairs for the configured roles')
+                pair = next_pair
+                next_pair += 1
+                curses.init_pair(pair, foreground, background)
+                pairs[colors_key] = pair
+            _role_attrs[role] |= curses.color_pair(pair)
+    except curses.error as exc:
+        raise RuntimeError(f'cannot initialize terminal colors: {exc}') from exc
+    _default_color_attr = _role_attrs['normal']
     window.bkgd(' ', _default_color_attr)
 
 
+def role_color(role: str) -> int:
+    return _role_attrs.get(role, _default_color_attr)
+
+
 def index_date_color() -> int:
-    return _index_date_color_attr
+    return role_color('index_date')
 
 
 def index_flags_color() -> int:
-    return _index_flags_color_attr
+    return role_color('index_flags')
 
 
 def index_indicator_color() -> int:
-    return _index_indicator_color_attr
+    return role_color('indicator')
 
 
 def index_sender_color() -> int:
-    return _index_sender_color_attr
+    return role_color('index_sender')
 
 
 def format_index_date(timestamp: float, now: float | None = None) -> str:
@@ -157,7 +211,7 @@ def put(window: curses.window, y: int, x: int, text: str, width: int, attr: int 
 
 def status(window: curses.window, text: str) -> None:
     height, width = window.getmaxyx()
-    put(window, height - 1, 0, text.ljust(width), width, curses.A_REVERSE)
+    put(window, height - 1, 0, text.ljust(width), width, role_color('status'))
     window.refresh()
 
 
@@ -205,7 +259,7 @@ def pager(window: curses.window, title: str, text: str) -> int:
         lines = wrap_text(text, width - 1)
         maximum = max(0, len(lines) - height + 1)
         offset = min(offset, maximum)
-        put(window, 0, 0, title.ljust(width), width, curses.A_REVERSE)
+        put(window, 0, 0, title.ljust(width), width, role_color('header'))
         for row, line in enumerate(lines[offset : offset + height - 1], 1):
             put(window, row, 0, line, width - 1)
         window.refresh()

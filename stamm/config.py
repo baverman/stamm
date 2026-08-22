@@ -15,6 +15,55 @@ class ConfigError(ValueError):
     """An invalid Stamm configuration."""
 
 
+COLOR_NAMES = frozenset(
+    {
+        'default',
+        'black',
+        'red',
+        'green',
+        'yellow',
+        'blue',
+        'magenta',
+        'cyan',
+        'white',
+        'bright-black',
+        'bright-red',
+        'bright-green',
+        'bright-yellow',
+        'bright-blue',
+        'bright-magenta',
+        'bright-cyan',
+        'bright-white',
+    }
+)
+COLOR_ATTRIBUTES = frozenset({'bold', 'dim', 'reverse', 'underline', 'standout'})
+COLOR_ROLES = frozenset({'header', 'status', 'indicator', 'index_date', 'index_flags', 'index_sender', 'index_subject'})
+type ColorValue = str | int
+
+
+@dataclass(frozen=True)
+class ColorStyle:
+    fg: ColorValue | None = None
+    bg: ColorValue | None = None
+    attrs: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ColorConfig:
+    normal: ColorStyle = ColorStyle(fg='default', bg='default')
+    roles: dict[str, ColorStyle] = field(default_factory=dict)
+
+    def resolved(self, role: str) -> ColorStyle:
+        if role == 'normal':
+            return self.normal
+        style = self.roles.get(role, ColorStyle())
+        return ColorStyle(
+            fg=self.normal.fg if style.fg is None else style.fg,
+            bg=self.normal.bg if style.bg is None else style.bg,
+            attrs=style.attrs,
+        )
+
+
 @dataclass(frozen=True)
 class MimeRule:
     type: str
@@ -39,6 +88,7 @@ class Config:
     alternative_order: tuple[str, ...] = ('text/plain', 'text/html')
     signatures: dict[str, Path] = field(default_factory=dict)
     mime: tuple[MimeRule, ...] = ()
+    colors: ColorConfig = field(default_factory=ColorConfig)
 
     @property
     def identity_addresses(self) -> tuple[str, ...]:
@@ -63,6 +113,54 @@ def _strings(data: dict[str, Any], key: str, default: tuple[str, ...] = ()) -> t
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise ConfigError(f'{key} must be an array of strings')
     return tuple(value)
+
+
+def _color_value(value: Any, field_name: str) -> ColorValue | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (str, int)):
+        raise ConfigError(f'{field_name} must be a color name or nonnegative index')
+    if isinstance(value, str) and value not in COLOR_NAMES:
+        raise ConfigError(f'unknown color name for {field_name}: {value}')
+    if isinstance(value, int) and value < 0:
+        raise ConfigError(f'{field_name} color index must be nonnegative')
+    return value
+
+
+def _color_style(value: Any, role: str) -> ColorStyle:
+    if not isinstance(value, dict):
+        raise ConfigError(f'colors.{role} must be a table')
+    unknown = set(value) - {'fg', 'bg', 'attrs'}
+    if unknown:
+        raise ConfigError(f'unknown colors.{role} options: {", ".join(sorted(unknown))}')
+    attrs = value.get('attrs', [])
+    if not isinstance(attrs, list) or not all(isinstance(attr, str) for attr in attrs):
+        raise ConfigError(f'colors.{role}.attrs must be an array of strings')
+    invalid = set(attrs) - COLOR_ATTRIBUTES
+    if invalid:
+        raise ConfigError(f'unknown colors.{role} attributes: {", ".join(sorted(invalid))}')
+    return ColorStyle(
+        fg=_color_value(value.get('fg'), f'colors.{role}.fg'),
+        bg=_color_value(value.get('bg'), f'colors.{role}.bg'),
+        attrs=tuple(attrs),
+    )
+
+
+def _colors(data: dict[str, Any]) -> ColorConfig:
+    value = data.get('colors', {})
+    if not isinstance(value, dict):
+        raise ConfigError('colors must be a table')
+    unknown = set(value) - COLOR_ROLES - {'normal'}
+    if unknown:
+        raise ConfigError(f'unknown color roles: {", ".join(sorted(unknown))}')
+    raw_normal = _color_style(value.get('normal', {}), 'normal')
+    normal = ColorStyle(
+        fg='default' if raw_normal.fg is None else raw_normal.fg,
+        bg='default' if raw_normal.bg is None else raw_normal.bg,
+        attrs=raw_normal.attrs,
+    )
+    roles = {role: _color_style(style, role) for role, style in value.items() if role != 'normal'}
+    return ColorConfig(normal, roles)
 
 
 def load_config(path: Path | None = None) -> Config:
@@ -132,4 +230,5 @@ def load_config(path: Path | None = None) -> Config:
         alternative_order=_strings(data, 'alternative_order', ('text/plain', 'text/html')),
         signatures=signatures,
         mime=tuple(rules),
+        colors=_colors(data),
     )

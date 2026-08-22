@@ -10,6 +10,15 @@ identities = ["Anton Bobrov <baverman@gmail.com>"]
 auto_view = ["text/html", "text/calendar", "application/ics"]
 alternative_order = ["text/plain", "text/html"]
 
+[colors]
+normal = { fg = "default", bg = "default" }
+header = { attrs = ["reverse"] }
+status = { attrs = ["reverse"] }
+indicator = { fg = "black", bg = "white" }
+index_date = { fg = "blue" }
+index_flags = { fg = "bright-red" }
+index_sender = { fg = "green" }
+
 [signatures]
 "user@example.com" = "~/.signature"
 
