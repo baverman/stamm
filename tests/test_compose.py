@@ -34,6 +34,20 @@ def config(tmp_path: Path) -> Config:
     )
 
 
+def test_empty_attachment_field_is_included_and_ignored_when_parsed() -> None:
+    text = compose.format_buffer(ComposeData(sender='sender@example.com'))
+
+    assert 'Subject: \nAttach:\n\n' in text
+    assert compose.parse_buffer(text).attachments == []
+
+
+def test_header_values_are_stripped() -> None:
+    data = compose.parse_buffer('From:   sender@example.com   \nSubject:   example   \n\nbody')
+
+    assert data.sender == 'sender@example.com'
+    assert data.subject == 'example'
+
+
 def test_editor_reports_unchanged_buffer(config: Config, monkeypatch: pytest.MonkeyPatch) -> None:
     initial = ComposeData(sender='sender@example.com')
     monkeypatch.setattr(

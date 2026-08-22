@@ -58,8 +58,10 @@ def parse_buffer(text: str) -> ComposeData:
         name, separator, value = line.partition(':')
         if not separator:
             continue
-        value = value.lstrip()
+        value = value.strip()
         if name == 'Attach':
+            if not value:
+                continue
             source, marker, filename = value.partition(' -> ')
             path = Path(os.path.expandvars(os.path.expanduser(source)))
             attachments.append(Attachment(path, filename if marker else path.name))
@@ -87,6 +89,8 @@ def format_buffer(data: ComposeData) -> str:
     for attachment in data.attachments:
         suffix = f' -> {attachment.filename}' if attachment.filename != attachment.path.name else ''
         lines.append(f'Attach: {attachment.path}{suffix}')
+    if not data.attachments:
+        lines.append('Attach:')
     return '\n'.join(lines) + '\n\n' + data.body
 
 
