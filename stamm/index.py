@@ -13,6 +13,8 @@ from pathlib import Path
 
 from . import maildir
 
+INITIAL_MESSAGE_LIMIT = 100
+
 
 @dataclass(frozen=True)
 class IndexedMessage:
@@ -77,8 +79,12 @@ class MessageIndex:
             references=() if not refs or refs == '[]' else tuple(json.loads(refs)),
         )
 
-    def messages(self) -> list[IndexedMessage]:
-        return [self._from_row(row) for row in self.connection.execute('SELECT * FROM messages')]
+    def messages(self, *, limit: int | None = None) -> list[IndexedMessage]:
+        if limit is None:
+            rows = self.connection.execute('SELECT * FROM messages')
+        else:
+            rows = self.connection.execute('SELECT * FROM messages ORDER BY timestamp DESC LIMIT ?', (limit,))
+        return [self._from_row(row) for row in rows]
 
     def get(self, key: str) -> IndexedMessage | None:
         row = self.connection.execute('SELECT * FROM messages WHERE key = ?', (key,)).fetchone()

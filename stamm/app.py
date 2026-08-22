@@ -12,7 +12,7 @@ from pathlib import Path
 
 from . import compose, delivery, ui
 from .config import Config
-from .index import IndexedMessage, MessageIndex
+from .index import INITIAL_MESSAGE_LIMIT, IndexedMessage, MessageIndex
 from .message import header_block, parse_message, select_body
 from .mime import MimeManager, part_rows, save_part
 from .threads import ThreadRow, build_threads
@@ -31,7 +31,7 @@ class MaildirState:
     def open(cls, path: Path) -> MaildirState:
         index = MessageIndex(path)
         try:
-            rows = build_threads(index.refresh())
+            rows = build_threads(index.messages(limit=INITIAL_MESSAGE_LIMIT))
         except Exception:
             index.close()
             raise
@@ -102,7 +102,16 @@ class App:
         if state is None:
             state = MaildirState.open(path)
             self.maildirs[key] = state
+            self.state = state
+            self.reconcile()
+            return
         self.state = state
+
+    def reconcile(self) -> None:
+        self.notice = 'reconciling...' if self.state.rows else 'indexing...'
+        self.draw_index()
+        self.screen.refresh()
+        self.state.refresh()
 
     def draw_index(self) -> None:
         self.screen.erase()
@@ -384,6 +393,7 @@ class App:
         self.screen.keypad(True)
         curses.curs_set(0)
         try:
+            self.reconcile()
             while True:
                 self.show_opener_errors()
                 self.draw_index()

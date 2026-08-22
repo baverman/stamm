@@ -48,7 +48,7 @@ def test_message_cannot_move_to_its_current_maildir(tmp_path: Path) -> None:
             index.move_to(item.key, tmp_path)
 
 
-def test_mark_keeps_message_until_purge(tmp_path: Path) -> None:
+def test_mark_keeps_message_until_purge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     inbox = tmp_path / 'inbox'
     trash = tmp_path / 'trash'
     ensure_maildir(inbox)
@@ -73,7 +73,9 @@ def test_mark_keeps_message_until_purge(tmp_path: Path) -> None:
         colors=DEFAULT_COLORS,
     )
     state = MaildirState.open(inbox)
+    state.refresh()
     app = App(object(), config, state, ui.CursesTheme(0, 0, 0, 0, 0, 0, 0, 0))  # type: ignore[arg-type]
+    monkeypatch.setattr(app, 'reconcile', lambda: app.state.refresh())
     try:
         key = state.rows[0].message.key
 
