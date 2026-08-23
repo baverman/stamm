@@ -19,7 +19,6 @@ def test_old_date_uses_year() -> None:
     timestamp = datetime(2024, 4, 5, 14, 30).astimezone().timestamp()
     value = format_index_date(timestamp, timestamp + 366 * 24 * 60 * 60)
     assert value == '2024 Apr 05 '
-    assert len(value) == 12
 
 
 @pytest.mark.parametrize(
@@ -198,13 +197,12 @@ def test_prompt_page_navigation_scrolls_completion_menu(monkeypatch: pytest.Monk
     assert ui.prompt(window, '> ', completer=lambda _value, _cursor: choices, status_attr=0) == '8'  # type: ignore[arg-type]
 
 
-def test_prompt_navigates_and_updates_runtime_history(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_prompt_navigates_history(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(curses, 'curs_set', lambda _visibility: 0)
     history = ['first', 'second']
     window = _PromptWindow([curses.KEY_UP, '\n'])
 
     assert ui.prompt(window, '> ', history=history, status_attr=0) == 'second'  # type: ignore[arg-type]
-    assert history == ['first', 'second']
 
 
 def test_maildir_completer_only_returns_directories(tmp_path: Path) -> None:

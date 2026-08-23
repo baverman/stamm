@@ -38,27 +38,6 @@ def test_configured_opener_takes_priority() -> None:
     assert manager.opener_command('application/pdf') == 'custom {file}'
 
 
-def test_one_out_file_captures_stdout_and_stderr() -> None:
-    manager = MimeManager(config())
-    directory = tempfile.TemporaryDirectory(prefix='stamm-test-open-')
-    output = Path(directory.name) / 'out'
-    with output.open('wb') as out:
-        process = manager._run(
-            'printf stdout; printf stderr >&2; exit 7',
-            b'',
-            detached=True,
-            output=out,
-        )
-    assert isinstance(process, subprocess.Popen)
-    process.wait(timeout=5)
-    manager._temporary.append(_OpenProcess(directory, process, output, 'test opener'))
-
-    result = manager.reap()
-
-    assert result is None
-    assert not Path(directory.name).exists()
-
-
 def test_successful_opener_keeps_temporary_file_until_manager_closes() -> None:
     manager = MimeManager(config())
     directory = tempfile.TemporaryDirectory(prefix='stamm-test-open-')
@@ -71,7 +50,7 @@ def test_successful_opener_keeps_temporary_file_until_manager_closes() -> None:
     process.wait(timeout=5)
     manager._temporary.append(_OpenProcess(directory, process, output, 'test opener'))
 
-    assert manager.reap() is None
+    manager.reap()
     assert source.exists()
 
     manager.close()

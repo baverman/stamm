@@ -50,7 +50,7 @@ def test_message_cannot_move_to_its_current_maildir(tmp_path: Path) -> None:
             index.move_to(item.key, tmp_path)
 
 
-def test_mark_keeps_message_until_purge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_mark_keeps_message_until_purge(tmp_path: Path) -> None:
     inbox = tmp_path / 'inbox'
     trash = tmp_path / 'trash'
     ensure_maildir(inbox)
