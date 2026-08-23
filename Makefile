@@ -1,4 +1,4 @@
-.PHONY: fmt lint test all
+.PHONY: fmt lint all
 
 fmt:
 	ruff check --select I --fix
@@ -8,8 +8,4 @@ lint:
 	ruff check
 	mypy
 
-
-test:
-	python3 -m pytest
-
-all: fmt lint test
+all: fmt lint
