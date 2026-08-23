@@ -513,13 +513,13 @@ class App:
                     if value is not None:
                         self.run_command(value)
                 elif key in ui.KEYS['change']:
-                    value = ui.prompt(
-                        self.screen,
-                        'Maildir: ',
-                        str(self.config.root) + '/',
-                        complete_paths=True,
-                        status_attr=self.theme.status,
-                    )
+                    curses.def_prog_mode()
+                    curses.endwin()
+                    try:
+                        value = ui.readline_path('Maildir: ', str(self.config.root) + '/')
+                    finally:
+                        curses.reset_prog_mode()
+                        self.screen.refresh()
                     if value:
                         try:
                             self.open_maildir(Path(value))

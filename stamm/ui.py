@@ -270,6 +270,52 @@ def prompt(
             value += key
 
 
+def _path_completions(value: str) -> list[str]:
+    expanded = os.path.expandvars(os.path.expanduser(value))
+    path = Path(expanded or '.')
+    parent, prefix = (path, '') if value.endswith(os.sep) else (path.parent, path.name)
+    try:
+        matches = sorted(item for item in parent.iterdir() if item.name.startswith(prefix))
+    except OSError:
+        return []
+    return [str(item) + (os.sep if item.is_dir() else '') for item in matches]
+
+
+def readline_path(label: str, initial: str = '') -> str | None:
+    """Read a path with Readline history, editing, and completion."""
+    import readline
+
+    previous_completer = readline.get_completer()
+    previous_delimiters = readline.get_completer_delims()
+    matches: list[str] = []
+
+    def complete(value: str, state: int) -> str | None:
+        nonlocal matches
+        if state == 0:
+            matches = _path_completions(value)
+        return matches[state] if state < len(matches) else None
+
+    def startup() -> None:
+        readline.insert_text(initial)
+
+    readline.set_completer(complete)
+    readline.set_completer_delims('')
+    readline.parse_and_bind('tab: complete')
+    readline.set_startup_hook(startup)
+    try:
+        try:
+            print('\r\x1b[2K', end='', flush=True)
+            value = input(label)
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return None
+    finally:
+        readline.set_startup_hook()
+        readline.set_completer(previous_completer)
+        readline.set_completer_delims(previous_delimiters)
+    return os.path.expandvars(os.path.expanduser(value))
+
+
 def pager(window: curses.window, title: str, text: str, header_attr: int) -> int:
     """Display text and return the first key that is not a scroll command."""
     offset = 0

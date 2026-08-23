@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import curses
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 
@@ -104,3 +105,13 @@ def test_choose_maps_generic_and_explicit_keys(key: str | int, expected: str, mo
         )
         == expected
     )
+
+
+def test_path_completions_include_matching_directories_and_files(tmp_path: Path) -> None:
+    directory = tmp_path / 'mailbox'
+    directory.mkdir()
+    file = tmp_path / 'mail.txt'
+    file.write_text('', encoding='utf-8')
+    (tmp_path / 'other').mkdir()
+
+    assert ui._path_completions(str(tmp_path / 'mail')) == [str(file), str(directory) + '/']
