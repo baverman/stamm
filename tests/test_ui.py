@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from stamm import ui
+from stamm import keys, ui
 from stamm.ui import format_index_date, format_sender, viewport_start, wrap_text
 
 
@@ -82,25 +82,30 @@ class _ChoiceWindow:
 @pytest.mark.parametrize(
     ('key', 'expected'),
     [
-        ('\n', 's'),
-        ('\r', 's'),
-        (curses.KEY_ENTER, 's'),
-        ('\x1b', 'x'),
-        (27, 'x'),
-        ('e', 'e'),
+        ('\n', 'send'),
+        ('\r', 'send'),
+        (curses.KEY_ENTER, 'send'),
+        ('\x1b', None),
+        ('e', 'edit'),
     ],
 )
-def test_choose_maps_generic_and_explicit_keys(key: str | int, expected: str, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_choose_maps_generic_and_explicit_keys(
+    key: str | int, expected: str | None, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(ui, 'status', lambda *_args: None)
+    compiled, diagnostics = keys.compile_bindings(
+        {'choose': keys.BindingDefinition(ui.CHOOSE_ACTIONS, ui.CHOOSE_DEFAULT_BINDINGS)}, {}
+    )
+    assert not diagnostics
 
     assert (
         ui.choose(
             _ChoiceWindow(key),  # type: ignore[arg-type]
             'Compose',
-            'sedx',
+            {'s': 'send', 'e': 'edit', 'd': 'draft', 'x': 'discard'},
             0,
-            primary='s',
-            cancel='x',
+            compiled['choose'],
+            primary='send',
         )
         == expected
     )

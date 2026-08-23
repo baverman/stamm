@@ -6,33 +6,33 @@ import curses
 import os
 import time
 import unicodedata
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from email.utils import parseaddr
 from pathlib import Path
+from typing import TypeVar
 
+from . import keys
 from .config_model import ColorConfig, ColorStyle
 
-KEYS = {
-    'down': (ord('j'), curses.KEY_DOWN),
-    'up': (ord('k'), curses.KEY_UP),
-    'open': (10, 13, curses.KEY_ENTER),
-    'back': (ord('q'),),
-    'change': (ord('c'),),
-    'command': (ord(':'),),
-    'compose': (ord('m'),),
-    'reply': (ord('r'),),
-    'reply_all': (ord('g'),),
-    'forward': (ord('f'),),
-    'flag': (ord('F'),),
-    'unread': (ord('N'),),
-    'parts': (ord('v'),),
-    'resume': (ord('e'),),
-    'refresh': (ord('R'),),
-    'save': (ord('s'),),
-    'delete': (ord('d'),),
-    'undelete': (ord('u'),),
+T = TypeVar('T')
+
+CHOOSE_ACTIONS = frozenset({'accept', 'cancel'})
+CHOOSE_DEFAULT_BINDINGS: keys.BindingSpecs = {
+    'ENTER': 'accept',
+    '^[': 'cancel',
+}
+PAGER_ACTIONS = frozenset({'up', 'down', 'pageup', 'pagedown', 'home', 'end'})
+PAGER_DEFAULT_BINDINGS: keys.BindingSpecs = {
+    'j': 'down',
+    'DOWN': 'down',
+    'k': 'up',
+    'UP': 'up',
+    'PAGEUP': 'pageup',
+    'PAGEDOWN': 'pagedown',
+    'HOME': 'home',
+    'END': 'end',
 }
 
 MONTHS = ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')
@@ -218,23 +218,23 @@ def status(window: curses.window, text: str, attr: int) -> None:
 def choose(
     window: curses.window,
     prompt_text: str,
-    choices: str,
+    choices: Mapping[str, T],
     status_attr: int,
+    bindings: Mapping[keys.Key, str],
     *,
-    primary: str,
-    cancel: str,
-) -> str:
-    if primary not in choices or cancel not in choices:
-        raise ValueError('primary and cancel actions must be choices')
+    primary: T,
+) -> T | None:
+    if primary not in choices.values():
+        raise ValueError('primary item must be a choice')
     status(window, f'{prompt_text} [{"/".join(choices)}]', status_attr)
     while True:
-        key = window.get_wch()
-        if key in ('\n', '\r', curses.KEY_ENTER):
+        action, ch = keys.read(window, bindings)
+        if action == 'accept':
             return primary
-        if key in ('\x1b', 27):
-            return cancel
-        if isinstance(key, str) and key in choices:
-            return key
+        if action == 'cancel':
+            return None
+        if isinstance(ch, str) and ch in choices:
+            return choices[ch]
 
 
 @dataclass(frozen=True, slots=True)
@@ -506,23 +506,38 @@ def prompt(
                 pass
 
 
-def pager(window: curses.window, title: str, text: str, header_attr: int) -> int:
-    """Display text and return the first key that is not a scroll command."""
+def pager(
+    window: curses.window,
+    title: str,
+    text: str,
+    header_attr: int,
+    bindings: Mapping[keys.Key, str],
+) -> keys.Key:
+    """Display text and return the first event that is not a scroll action."""
     offset = 0
     while True:
         window.erase()
         height, width = window.getmaxyx()
         lines = wrap_text(text, width - 1)
-        maximum = max(0, len(lines) - height + 1)
+        visible = max(1, height - 1)
+        maximum = max(0, len(lines) - visible)
         offset = min(offset, maximum)
         put(window, 0, 0, title.ljust(width), width, header_attr)
-        for row, line in enumerate(lines[offset : offset + height - 1], 1):
+        for row, line in enumerate(lines[offset : offset + visible], 1):
             put(window, row, 0, line, width - 1)
         window.refresh()
-        key = window.getch()
-        if key in KEYS['down']:
+        action, ch = keys.read(window, bindings)
+        if action == 'down':
             offset = min(maximum, offset + 1)
-        elif key in KEYS['up']:
+        elif action == 'up':
             offset = max(0, offset - 1)
+        elif action == 'pageup':
+            offset = max(0, offset - visible)
+        elif action == 'pagedown':
+            offset = min(maximum, offset + visible)
+        elif action == 'home':
+            offset = 0
+        elif action == 'end':
+            offset = maximum
         else:
-            return key
+            return ch

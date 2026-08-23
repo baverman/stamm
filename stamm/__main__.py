@@ -22,6 +22,7 @@ def main(argv: list[str] | None = None) -> int:
         selected = args.maildir if args.maildir is not None else config.spool
 
         def run(screen: curses.window) -> None:
+            screen.keypad(True)
             theme = ui.initialize_colors(screen, config.colors)
             app = App(screen, config, theme)
             app.open_maildir(selected)

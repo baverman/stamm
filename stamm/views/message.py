@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from email.message import EmailMessage
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
-from .. import compose, ui
+from .. import compose, keys, ui
 from ..index import IndexedMessage
 from ..message import header_block, parse_message, select_body
 from ..state import IndexState, MaildirState
@@ -16,6 +16,14 @@ if TYPE_CHECKING:
 
 @dataclass
 class MessageView:
+    ACTIONS: ClassVar[frozenset[str]] = frozenset({'back', 'parts', 'reply', 'reply_all', 'forward'})
+    DEFAULT_BINDINGS: ClassVar[keys.BindingSpecs] = {
+        'q': 'back',
+        'v': 'parts',
+        'r': 'reply',
+        'g': 'reply_all',
+        'f': 'forward',
+    }
     maildir: MaildirState
     index_state: IndexState
     item: IndexedMessage
@@ -51,16 +59,17 @@ class MessageView:
             if self.notice:
                 text += f'\n\n[{self.notice}]'
                 self.notice = ''
-            key = ui.pager(app.screen, self.item.subject, text, app.theme.header)
-            if key in ui.KEYS['back']:
+            ch = ui.pager(app.screen, self.item.subject, text, app.theme.header, app.bindings['pager'])
+            action = keys.resolve(app.bindings['message'], ch)
+            if action == 'back':
                 app.pop()
                 return
-            if key in ui.KEYS['parts']:
+            if action == 'parts':
                 from .parts import PartsView
 
                 app.push(PartsView(self.message))
                 return
-            if key in ui.KEYS['reply']:
+            if action == 'reply':
                 app.push(
                     ComposeView(
                         compose.reply(self.message, self.body, app.config),
@@ -71,7 +80,7 @@ class MessageView:
                     )
                 )
                 return
-            if key in ui.KEYS['reply_all']:
+            if action == 'reply_all':
                 app.push(
                     ComposeView(
                         compose.reply(self.message, self.body, app.config, all_recipients=True),
@@ -82,6 +91,6 @@ class MessageView:
                     )
                 )
                 return
-            if key in ui.KEYS['forward']:
+            if action == 'forward':
                 app.push(ComposeView.forward(self.message, self.body, app, self._set_notice))
                 return

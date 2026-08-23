@@ -1,16 +1,16 @@
+from dataclasses import _MISSING_TYPE, MISSING, fields, is_dataclass
 from dataclasses import field as dc_field
-from dataclasses import fields, is_dataclass
 from functools import partial
 from typing import Any, Callable, Generic, TypedDict, TypeVar
 
 T = TypeVar('T')
 
 Typ = type[T] | Callable[[Any], T]
+Factory = type[T] | Callable[[], T]
 
 
 class Meta(TypedDict, Generic[T]):
     typ: Callable[[Any], T]
-    default: T | None
     src: str | None
     required: bool
 
@@ -23,13 +23,14 @@ def norm_typ(typ: Typ[T]) -> Callable[[Any], T]:
 
 def field(
     typ: Typ[T],
-    default: T | None = None,
+    default: T | _MISSING_TYPE = MISSING,
     *,
     src: str | None = None,
     required: bool = True,
+    default_factory: Factory[T] | _MISSING_TYPE = MISSING,
 ) -> T:
-    meta: Meta[T] = {'typ': norm_typ(typ), 'default': default, 'src': src, 'required': required}
-    return dc_field(metadata=meta)  # type: ignore[no-any-return]
+    meta: Meta[T] = {'typ': norm_typ(typ), 'src': src, 'required': required}
+    return dc_field(metadata=meta, default=default, default_factory=default_factory)  # type: ignore[no-any-return,call-overload]
 
 
 def optfield(
@@ -37,8 +38,11 @@ def optfield(
     default: T | None = None,
     *,
     src: str | None = None,
+    default_factory: Factory[T] | _MISSING_TYPE = MISSING,
 ) -> T | None:
-    return field(typ, default, src=src, required=False)
+    if default_factory is not MISSING:
+        default = MISSING  # type: ignore[assignment]
+    return field(typ, default, src=src, required=False, default_factory=default_factory)
 
 
 def as_list(typ: Typ[T]) -> Callable[[Any], list[T]]:
@@ -82,16 +86,14 @@ def parse(cls: type[T], data: dict[str, object]) -> T:
         if v is None:
             if m['required']:
                 raise ValidationError(src, 'required field')
-            else:
-                v = m['default']
         else:
             try:
                 v = m['typ'](v)
             except Exception as e:
                 raise add_error_path(src, e)
+            result[f.name] = v
 
         used.add(src)
-        result[f.name] = v
 
     unknown = data.keys() - used
     if unknown:

@@ -73,27 +73,27 @@ class ComposeView:
                     action = ui.choose(
                         app.screen,
                         'Compose invalid: edit, draft, discard',
-                        'edx',
+                        {'e': 'edit', 'd': 'draft', 'x': 'discard'},
                         app.theme.status,
-                        primary='e',
-                        cancel='x',
+                        app.bindings['choose'],
+                        primary='edit',
                     )
                 else:
                     action = ui.choose(
                         app.screen,
                         'Compose: send, edit, draft, discard',
-                        'sedx',
+                        {'s': 'send', 'e': 'edit', 'd': 'draft', 'x': 'discard'},
                         app.theme.status,
-                        primary='s',
-                        cancel='x',
+                        app.bindings['choose'],
+                        primary='send',
                     )
-                if action == 'e':
+                if action == 'edit':
                     continue
-                if action == 'x':
+                if action in (None, 'discard'):
                     self._finish(app, '')
                     return
                 try:
-                    if action == 'd':
+                    if action == 'draft':
                         delivery.save_draft(data, app.config)
                         notice = 'draft saved'
                     else:
@@ -110,18 +110,18 @@ class ComposeView:
                     self._finish(app, notice)
                     return
                 except (OSError, delivery.DeliveryError) as exc:
-                    ui.pager(app.screen, 'Delivery failed', str(exc), app.theme.header)
+                    ui.pager(app.screen, 'Delivery failed', str(exc), app.theme.header, app.bindings['pager'])
                     retry = ui.choose(
                         app.screen,
                         'Delivery failed: edit, draft, discard',
-                        'edx',
+                        {'e': 'edit', 'd': 'draft', 'x': 'discard'},
                         app.theme.status,
-                        primary='e',
-                        cancel='x',
+                        app.bindings['choose'],
+                        primary='edit',
                     )
-                    if retry == 'e':
+                    if retry == 'edit':
                         continue
-                    if retry == 'd':
+                    if retry == 'draft':
                         try:
                             delivery.save_draft(data, app.config)
                             if self.old_draft:

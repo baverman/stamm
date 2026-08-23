@@ -119,9 +119,10 @@ class Config:
     hooks: HooksConfig = field(HooksConfig, default=DEFAULT_HOOKS, required=False)
     auto_view: tuple[str, ...] = field(as_tuple(str), default=(), required=False)
     alternative_order: tuple[str, ...] = field(as_tuple(str), default=('text/plain', 'text/html'), required=False)
-    signatures: dict[str, Path] = field(as_kv(Path), default={}, required=False)
+    signatures: dict[str, Path] = field(as_kv(Path), default_factory=dict, required=False)
     mime: tuple[MimeRule, ...] = field(as_tuple(MimeRule), default=(), required=False)
     colors: ColorConfig = field(ColorConfig, default=DEFAULT_COLORS, required=False)
+    keys: dict[str, dict[str, str]] = field(as_kv(as_kv(str)), default_factory=dict, required=False)
 
     @property
     def identity_addresses(self) -> tuple[str, ...]:

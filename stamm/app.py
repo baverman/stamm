@@ -3,12 +3,22 @@ from __future__ import annotations
 import curses
 from pathlib import Path
 
-from . import ui
+from . import keys, ui
 from .config import Config
 from .mime import MimeManager
 from .state import MaildirState
 from .views import View
 from .views.index import IndexView
+from .views.message import MessageView
+from .views.parts import PartsView
+
+BINDING_REGISTRY = {
+    'index': keys.BindingDefinition(IndexView.ACTIONS, IndexView.DEFAULT_BINDINGS),
+    'message': keys.BindingDefinition(MessageView.ACTIONS, MessageView.DEFAULT_BINDINGS),
+    'parts': keys.BindingDefinition(PartsView.ACTIONS, PartsView.DEFAULT_BINDINGS),
+    'pager': keys.BindingDefinition(ui.PAGER_ACTIONS, ui.PAGER_DEFAULT_BINDINGS),
+    'choose': keys.BindingDefinition(ui.CHOOSE_ACTIONS, ui.CHOOSE_DEFAULT_BINDINGS),
+}
 
 
 class App:
@@ -20,6 +30,7 @@ class App:
         self.mime = MimeManager(config)
         self.stack: list[View] = []
         self.histories: dict[str, list[str]] = {}
+        self.bindings, self.binding_diagnostics = keys.compile_bindings(BINDING_REGISTRY, config.keys)
 
     def push(self, view: View) -> None:
         self.stack.append(view)
@@ -47,22 +58,36 @@ class App:
         answer = ui.choose(
             self.screen,
             f'Move {count} deleted message(s) to Trash?',
-            'yn',
+            {'y': 'yes', 'n': 'no'},
             self.theme.status,
-            primary='y',
-            cancel='n',
+            self.bindings['choose'],
+            primary='yes',
         )
-        if answer == 'n':
+        if answer != 'yes':
             return True
         errors = [error for state in self.maildirs.values() for error in state.purge_deleted(self.config.trash)]
         if errors:
-            ui.pager(self.screen, 'Cannot move deleted messages', '\n'.join(errors), self.theme.header)
+            ui.pager(
+                self.screen,
+                'Cannot move deleted messages',
+                '\n'.join(errors),
+                self.theme.header,
+                self.bindings['pager'],
+            )
             return False
         return True
 
     def run(self) -> None:
         self.screen.keypad(True)
         curses.curs_set(0)
+        if self.binding_diagnostics:
+            ui.pager(
+                self.screen,
+                'Key binding warnings',
+                '\n'.join(self.binding_diagnostics) + '\n\nPress any unbound key to continue.',
+                self.theme.header,
+                self.bindings['pager'],
+            )
         try:
             while self.stack:
                 self.mime.reap()

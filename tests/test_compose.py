@@ -112,6 +112,7 @@ def test_successful_reply_sets_maildir_replied_flag(config: Config, monkeypatch:
     app.config = config
     app.screen = screen
     app.theme = SimpleNamespace(status=0, header=0)
+    app.bindings = {'choose': {}}
     view = ComposeView(
         data,
         notices.append,
@@ -125,7 +126,7 @@ def test_successful_reply_sets_maildir_replied_flag(config: Config, monkeypatch:
     monkeypatch.setattr(compose_view_module.curses, 'endwin', lambda: None)
     monkeypatch.setattr(compose_view_module.curses, 'reset_prog_mode', lambda: None)
     monkeypatch.setattr(compose, 'edit', lambda *_args: (data, True))
-    monkeypatch.setattr(ui, 'choose', lambda *_args, **_kwargs: 's')
+    monkeypatch.setattr(ui, 'choose', lambda *_args, **_kwargs: 'send')
     monkeypatch.setattr(delivery, 'send', lambda *_args: Path('/tmp/sent'))
 
     view.run(app)

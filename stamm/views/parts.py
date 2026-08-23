@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from email.message import EmailMessage
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
-from .. import ui
+from .. import keys, ui
 from ..mime import PartRow, part_rows, save_part
 
 if TYPE_CHECKING:
@@ -14,6 +14,16 @@ if TYPE_CHECKING:
 
 @dataclass
 class PartsView:
+    ACTIONS: ClassVar[frozenset[str]] = frozenset({'up', 'down', 'open', 'save', 'back'})
+    DEFAULT_BINDINGS: ClassVar[keys.BindingSpecs] = {
+        'q': 'back',
+        'j': 'down',
+        'DOWN': 'down',
+        'k': 'up',
+        'UP': 'up',
+        'ENTER': 'open',
+        's': 'save',
+    }
     message: EmailMessage
     rows: list[PartRow] = field(init=False)
     selected: int = 0
@@ -38,21 +48,21 @@ class PartsView:
     def run(self, app: App) -> None:
         while True:
             self.draw(app)
-            key = app.screen.getch()
-            if key in ui.KEYS['back']:
+            action, _ch = keys.read(app.screen, app.bindings['parts'])
+            if action == 'back':
                 app.pop()
                 return
-            if key in ui.KEYS['down']:
+            if action == 'down':
                 self.selected = min(len(self.rows) - 1, self.selected + 1)
-            elif key in ui.KEYS['up']:
+            elif action == 'up':
                 self.selected = max(0, self.selected - 1)
-            elif key in ui.KEYS['open'] and not self.rows[self.selected].part.is_multipart():
+            elif action == 'open' and not self.rows[self.selected].part.is_multipart():
                 try:
                     app.mime.open(self.rows[self.selected].part)
                     self.notice = 'opened externally'
                 except Exception as exc:
                     self.notice = str(exc)
-            elif key in ui.KEYS['save'] and not self.rows[self.selected].part.is_multipart():
+            elif action == 'save' and not self.rows[self.selected].part.is_multipart():
                 value = ui.prompt(
                     app.screen,
                     'Save to: ',

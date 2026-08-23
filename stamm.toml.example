@@ -1,0 +1,30 @@
+root = "~/mail"
+spool = "inbox"
+sent = "sent"
+drafts = "drafts"
+trash = "trash"
+editor = "vim"
+sendmail = "/usr/sbin/sendmail"
+identities = ["User <user@example.com>"]
+
+# Key tables override defaults with key = action entries. An empty action unbinds a key.
+[keys.index]
+"^N" = "down"
+"^P" = "up"
+PAGEUP = "pageup"
+PAGEDOWN = "pagedown"
+q = ""
+
+[keys.message]
+q = "back"
+
+[keys.parts]
+s = "save"
+
+[keys.pager]
+HOME = "home"
+END = "end"
+
+[keys.choose]
+ENTER = "accept"
+"^[" = "cancel"

@@ -4,9 +4,9 @@ import shlex
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
-from .. import compose, ui
+from .. import compose, keys, ui
 from ..message import parse_message, select_body
 from ..search import parse_query
 from ..state import IndexState, MaildirState, SearchState
@@ -35,6 +35,58 @@ def _command_completer(value: str, cursor: int) -> list[ui.Completion]:
 
 @dataclass
 class IndexView:
+    ACTIONS: ClassVar[frozenset[str]] = frozenset(
+        {
+            'back',
+            'down',
+            'up',
+            'pageup',
+            'pagedown',
+            'home',
+            'end',
+            'open',
+            'refresh',
+            'command',
+            'change',
+            'compose',
+            'parts',
+            'reply',
+            'reply_all',
+            'forward',
+            'delete',
+            'undelete',
+            'flag',
+            'unread',
+            'resume',
+        }
+    )
+    DEFAULT_BINDINGS: ClassVar[keys.BindingSpecs] = {
+        'q': 'back',
+        'j': 'down',
+        'DOWN': 'down',
+        'k': 'up',
+        'UP': 'up',
+        'PAGEUP': 'pageup',
+        'PAGEDOWN': 'pagedown',
+        'HOME': 'home',
+        '^D': 'pagedown',
+        '^U': 'pageup',
+        'END': 'end',
+        'ENTER': 'open',
+        'R': 'refresh',
+        ':': 'command',
+        'c': 'change',
+        'm': 'compose',
+        'v': 'parts',
+        'r': 'reply',
+        'g': 'reply_all',
+        'f': 'forward',
+        'd': 'delete',
+        'u': 'undelete',
+        'F': 'flag',
+        'N': 'unread',
+        'e': 'resume',
+    }
     state: IndexState
     notice: str = ''
     reconcile: bool = False
@@ -151,7 +203,7 @@ class IndexView:
                 process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
                 output, _ = process.communicate()
             except (OSError, ValueError) as exc:
-                ui.pager(app.screen, 'Pre-refresh hook failed', str(exc), app.theme.header)
+                ui.pager(app.screen, 'Pre-refresh hook failed', str(exc), app.theme.header, app.bindings['pager'])
             else:
                 if output:
                     ui.pager(
@@ -159,6 +211,7 @@ class IndexView:
                         'Pre-refresh hook output',
                         output.decode('utf-8', errors='replace'),
                         app.theme.header,
+                        app.bindings['pager'],
                     )
         self.maildir.refresh()
         self.notice = 'refreshed'
@@ -192,24 +245,32 @@ class IndexView:
             self._reconcile(app)
         while True:
             self.draw(app)
-            key = app.screen.getch()
-            if key in ui.KEYS['back']:
+            action, _ch = keys.read(app.screen, app.bindings['index'])
+            if action == 'back':
                 if len(app.stack) == 1 and not app.confirm_exit():
                     continue
                 app.pop()
                 return
-            if key in ui.KEYS['down'] and self.state.rows:
+            if action == 'down' and self.state.rows:
                 self.state.select_next()
-            elif key in ui.KEYS['up'] and self.state.rows:
+            elif action == 'up' and self.state.rows:
                 self.state.select_previous()
-            elif key in ui.KEYS['open'] and self.state.rows:
+            elif action in ('pageup', 'pagedown') and self.state.rows:
+                visible = max(1, app.screen.getmaxyx()[0] - 2)
+                movement = -visible if action == 'pageup' else visible
+                self.state.selected = min(len(self.state.rows) - 1, max(0, self.state.selected + movement))
+            elif action == 'home' and self.state.rows:
+                self.state.selected = 0
+            elif action == 'end' and self.state.rows:
+                self.state.selected = len(self.state.rows) - 1
+            elif action == 'open' and self.state.rows:
                 from .message import MessageView
 
                 app.push(MessageView(self.maildir, self.state, self.state.selected_message))
                 return
-            elif key in ui.KEYS['refresh'] and self.state is self.maildir:
+            elif action == 'refresh' and self.state is self.maildir:
                 self._manual_refresh(app)
-            elif key in ui.KEYS['command']:
+            elif action == 'command':
                 value = ui.prompt(
                     app.screen,
                     ':',
@@ -219,18 +280,18 @@ class IndexView:
                 )
                 if value is not None and self._search(app, value):
                     return
-            elif key in ui.KEYS['change']:
+            elif action == 'change':
                 if self._change_maildir(app):
                     return
-            elif key in ui.KEYS['compose']:
+            elif action == 'compose':
                 app.push(ComposeView(compose.new(app.config), self._set_notice))
                 return
-            elif key in ui.KEYS['parts'] and self.state.rows:
+            elif action == 'parts' and self.state.rows:
                 from .parts import PartsView
 
                 app.push(PartsView(self._message()))
                 return
-            elif key in ui.KEYS['reply'] and self.state.rows:
+            elif action == 'reply' and self.state.rows:
                 message = self._message()
                 app.push(
                     ComposeView(
@@ -242,7 +303,7 @@ class IndexView:
                     )
                 )
                 return
-            elif key in ui.KEYS['reply_all'] and self.state.rows:
+            elif action == 'reply_all' and self.state.rows:
                 message = self._message()
                 app.push(
                     ComposeView(
@@ -254,24 +315,24 @@ class IndexView:
                     )
                 )
                 return
-            elif key in ui.KEYS['forward'] and self.state.rows:
+            elif action == 'forward' and self.state.rows:
                 message = self._message()
                 app.push(ComposeView.forward(message, self._render_body(app, message), app, self._set_notice))
                 return
-            elif key in ui.KEYS['delete'] and self.state.rows:
+            elif action == 'delete' and self.state.rows:
                 self._mark_deleted(app)
-            elif key in ui.KEYS['undelete'] and self.state.rows:
+            elif action == 'undelete' and self.state.rows:
                 self.maildir.unmark_deleted(self.state.selected_message.key)
                 self.state.select_next()
                 self.notice = 'deletion mark removed'
-            elif key in ui.KEYS['flag'] and self.state.rows:
+            elif action == 'flag' and self.state.rows:
                 item = self.state.selected_message
                 self.maildir.index.set_flags(
                     item.key, remove='F' if 'F' in item.flags else '', add='' if 'F' in item.flags else 'F'
                 )
                 self._reload()
-            elif key in ui.KEYS['unread'] and self.state.rows:
+            elif action == 'unread' and self.state.rows:
                 self.maildir.index.set_flags(self.state.selected_message.key, remove='S')
                 self._reload()
-            elif key in ui.KEYS['resume'] and self._resume(app):
+            elif action == 'resume' and self._resume(app):
                 return
