@@ -180,6 +180,16 @@ def test_repeated_tab_selects_next_without_applying_completion(monkeypatch: pyte
     assert ui.prompt(window, '> ', completer=lambda _value, _cursor: choices, status_attr=0) == 'drafts'  # type: ignore[arg-type]
 
 
+def test_prompt_accepts_numeric_tab_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(curses, 'curs_set', lambda _visibility: 0)
+    window = _PromptWindow(['s', 'e', 9, '\n'])
+
+    def complete(value: str, _cursor: int) -> list[ui.Completion]:
+        return [] if ' ' in value else [ui.Completion('search ', accept=False)]
+
+    assert ui.prompt(window, ':', completer=complete, status_attr=0) == 'search '  # type: ignore[arg-type]
+
+
 def test_prompt_page_navigation_scrolls_completion_menu(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(curses, 'curs_set', lambda _visibility: 0)
     window = _PromptWindow(['\t', curses.KEY_NPAGE, '\n'])

@@ -18,6 +18,21 @@ if TYPE_CHECKING:
     from ..app import App
 
 
+COMMANDS = ('search',)
+
+
+def _command_completer(value: str, cursor: int) -> list[ui.Completion]:
+    prefix = value[:cursor]
+    if any(character.isspace() for character in prefix):
+        return []
+    suffix = value[cursor:]
+    return [
+        ui.Completion(command + ' ' + suffix, command, accept=False)
+        for command in COMMANDS
+        if command.startswith(prefix)
+    ]
+
+
 @dataclass
 class IndexView:
     state: IndexState
@@ -94,6 +109,8 @@ class IndexView:
         except ValueError as exc:
             self.notice = str(exc)
             return False
+        if isinstance(self.state, SearchState):
+            app.pop()
         app.push(IndexView(SearchState.create(self.maildir, query, terms)))
         return True
 
@@ -193,7 +210,13 @@ class IndexView:
             elif key in ui.KEYS['refresh'] and self.state is self.maildir:
                 self._manual_refresh(app)
             elif key in ui.KEYS['command']:
-                value = ui.prompt(app.screen, ':', history=app.history('command'), status_attr=app.theme.status)
+                value = ui.prompt(
+                    app.screen,
+                    ':',
+                    completer=_command_completer,
+                    history=app.history('command'),
+                    status_attr=app.theme.status,
+                )
                 if value is not None and self._search(app, value):
                     return
             elif key in ui.KEYS['change']:

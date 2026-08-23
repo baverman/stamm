@@ -25,7 +25,6 @@ class App:
         self.stack.append(view)
 
     def history(self, name: str) -> list[str]:
-        """Return one prompt history for the current application run."""
         return self.histories.setdefault(name, [])
 
     def pop(self) -> None:

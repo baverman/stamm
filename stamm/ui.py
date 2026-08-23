@@ -239,8 +239,6 @@ def choose(
 
 @dataclass(frozen=True, slots=True)
 class Completion:
-    """One completion value and its optional popup label."""
-
     value: str
     label: str | None = None
     accept: bool = True
@@ -260,7 +258,6 @@ def _text_width(value: str) -> int:
 
 
 def _input_view(value: str, cursor: int, columns: int) -> tuple[str, int]:
-    """Return the visible input segment and the cursor column in that segment."""
     if columns <= 0:
         return '', 0
     start = cursor
@@ -308,7 +305,6 @@ def _path_completion_items(value: str, cursor: int, *, directories_only: bool = 
 
 
 def _path_completions(value: str) -> list[str]:
-    """Return path completion values. Kept as a small testable helper."""
     return [item.value for item in _path_completion_items(value, len(value))]
 
 
@@ -317,7 +313,6 @@ def path_completer(value: str, cursor: int) -> list[Completion]:
 
 
 def maildir_completer(value: str, cursor: int) -> list[Completion]:
-    """Complete directories and identify directories that are Maildirs."""
     return _path_completion_items(value, cursor, directories_only=True)
 
 
@@ -339,7 +334,6 @@ def prompt(
     history: list[str] | None = None,
     status_attr: int,
 ) -> str | None:
-    """Edit one line in curses with completion choices and runtime history."""
     value = initial
     cursor = len(value)
     choices: list[Completion] = []
@@ -398,6 +392,7 @@ def prompt(
         while True:
             draw()
             key = window.get_wch()
+            tab = key in ('\t', 9, curses.KEY_STAB)
             if key in ('\n', '\r', curses.KEY_ENTER):
                 if choices:
                     choice = choices[selected]
@@ -417,7 +412,7 @@ def prompt(
                     choices = []
                     continue
                 return None
-            if key == '\t' and choices:
+            if tab and choices:
                 selected = (selected + 1) % len(choices)
                 continue
             if key == curses.KEY_BTAB and choices:
@@ -433,7 +428,7 @@ def prompt(
                 else:
                     refresh_choices()
                 continue
-            if key == '\t':
+            if tab:
                 refresh_choices()
                 if len(choices) == 1:
                     choice = choices[0]
