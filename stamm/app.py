@@ -19,9 +19,14 @@ class App:
         self.maildirs: dict[Path, MaildirState] = {}
         self.mime = MimeManager(config)
         self.stack: list[View] = []
+        self.histories: dict[str, list[str]] = {}
 
     def push(self, view: View) -> None:
         self.stack.append(view)
+
+    def history(self, name: str) -> list[str]:
+        """Return one prompt history for the current application run."""
+        return self.histories.setdefault(name, [])
 
     def pop(self) -> None:
         if self.stack:

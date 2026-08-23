@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import curses
 import shlex
 import subprocess
 from dataclasses import dataclass
@@ -99,13 +98,15 @@ class IndexView:
         return True
 
     def _change_maildir(self, app: App) -> bool:
-        curses.def_prog_mode()
-        curses.endwin()
-        try:
-            value = ui.readline_path('Maildir: ', str(app.config.root) + '/')
-        finally:
-            curses.reset_prog_mode()
-            app.screen.refresh()
+        value = ui.prompt(
+            app.screen,
+            'Maildir: ',
+            str(app.config.root) + '/',
+            complete_paths=True,
+            completer=ui.maildir_completer,
+            history=app.history('maildir'),
+            status_attr=app.theme.status,
+        )
         if not value:
             return False
         try:
@@ -192,7 +193,7 @@ class IndexView:
             elif key in ui.KEYS['refresh'] and self.state is self.maildir:
                 self._manual_refresh(app)
             elif key in ui.KEYS['command']:
-                value = ui.prompt(app.screen, ':', complete_paths=False, status_attr=app.theme.status)
+                value = ui.prompt(app.screen, ':', history=app.history('command'), status_attr=app.theme.status)
                 if value is not None and self._search(app, value):
                     return
             elif key in ui.KEYS['change']:

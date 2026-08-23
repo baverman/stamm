@@ -6,6 +6,7 @@ import curses
 import os
 import time
 import unicodedata
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from email.utils import parseaddr
@@ -236,84 +237,278 @@ def choose(
             return key
 
 
+@dataclass(frozen=True, slots=True)
+class Completion:
+    """One completion value and its optional popup label."""
+
+    value: str
+    label: str | None = None
+    accept: bool = True
+
+
+Completer = Callable[[str, int], Sequence[Completion | str]]
+
+
+def _character_width(character: str) -> int:
+    if unicodedata.combining(character):
+        return 0
+    return 2 if unicodedata.east_asian_width(character) in ('W', 'F') else 1
+
+
+def _text_width(value: str) -> int:
+    return sum(_character_width(character) for character in value)
+
+
+def _input_view(value: str, cursor: int, columns: int) -> tuple[str, int]:
+    """Return the visible input segment and the cursor column in that segment."""
+    if columns <= 0:
+        return '', 0
+    start = cursor
+    used = 0
+    while start > 0:
+        width = _character_width(value[start - 1])
+        if used + width >= columns:
+            break
+        start -= 1
+        used += width
+    end = start
+    remaining = columns
+    while end < len(value):
+        width = _character_width(value[end])
+        if width > remaining:
+            break
+        remaining -= width
+        end += 1
+    return value[start:end], _text_width(value[start:cursor])
+
+
+def _path_completion_items(value: str, cursor: int, *, directories_only: bool = False) -> list[Completion]:
+    source = value[:cursor]
+    suffix = value[cursor:]
+    expanded = os.path.expandvars(os.path.expanduser(source))
+    path = Path(expanded or '.')
+    parent, prefix = (path, '') if source.endswith(os.sep) else (path.parent, path.name)
+    try:
+        matches = sorted(item for item in parent.iterdir() if item.name.startswith(prefix))
+    except OSError:
+        return []
+
+    result: list[Completion] = []
+    for item in matches:
+        if directories_only and not item.is_dir():
+            continue
+        is_directory = item.is_dir()
+        separator = os.sep if is_directory else ''
+        label = item.name + separator
+        is_maildir = directories_only and (item / 'cur').is_dir() and (item / 'new').is_dir()
+        if is_maildir:
+            label += ' [Maildir]'
+        result.append(Completion(str(item) + separator + suffix, label, accept=is_maildir or not is_directory))
+    return result
+
+
+def _path_completions(value: str) -> list[str]:
+    """Return path completion values. Kept as a small testable helper."""
+    return [item.value for item in _path_completion_items(value, len(value))]
+
+
+def path_completer(value: str, cursor: int) -> list[Completion]:
+    return _path_completion_items(value, cursor)
+
+
+def maildir_completer(value: str, cursor: int) -> list[Completion]:
+    """Complete directories and identify directories that are Maildirs."""
+    return _path_completion_items(value, cursor, directories_only=True)
+
+
+def _add_history(history: list[str] | None, value: str, limit: int = 100) -> None:
+    if history is None or not value:
+        return
+    history[:] = [entry for entry in history if entry != value]
+    history.append(value)
+    del history[:-limit]
+
+
 def prompt(
     window: curses.window,
     label: str,
     initial: str = '',
     *,
     complete_paths: bool = False,
+    completer: Completer | None = None,
+    history: list[str] | None = None,
     status_attr: int,
 ) -> str | None:
+    """Edit one line in curses with completion choices and runtime history."""
     value = initial
-    while True:
-        status(window, label + value, status_attr)
-        key = window.get_wch()
-        if key in ('\n', '\r'):
-            return os.path.expandvars(os.path.expanduser(value)) if complete_paths else value
-        if key == '\x1b':
-            return None
-        if key in ('\b', '\x7f') or key == curses.KEY_BACKSPACE:
-            value = value[:-1]
-        elif key == '\t' and complete_paths:
-            path = Path(value or '.')
-            parent, prefix = (path, '') if value.endswith(os.sep) else (path.parent, path.name)
-            try:
-                matches = sorted(item for item in parent.iterdir() if item.name.startswith(prefix))
-                if len(matches) == 1:
-                    value = str(matches[0]) + (os.sep if matches[0].is_dir() else '')
-                elif matches:
-                    common = os.path.commonprefix([item.name for item in matches])
-                    value = str(parent / common)
-            except OSError:
-                pass
-        elif isinstance(key, str) and key.isprintable():
-            value += key
+    cursor = len(value)
+    choices: list[Completion] = []
+    selected = 0
+    history_values = history if history is not None else []
+    history_index = len(history_values)
+    history_draft = value
+    popup_rows = 0
+    active_completer = path_completer if complete_paths and completer is None else completer
 
+    def refresh_choices() -> None:
+        nonlocal choices, selected
+        if active_completer is None:
+            choices = []
+            return
+        choices = [
+            item if isinstance(item, Completion) else Completion(item) for item in active_completer(value, cursor)
+        ]
+        selected = min(selected, max(0, len(choices) - 1))
 
-def _path_completions(value: str) -> list[str]:
-    expanded = os.path.expandvars(os.path.expanduser(value))
-    path = Path(expanded or '.')
-    parent, prefix = (path, '') if value.endswith(os.sep) else (path.parent, path.name)
-    try:
-        matches = sorted(item for item in parent.iterdir() if item.name.startswith(prefix))
-    except OSError:
-        return []
-    return [str(item) + (os.sep if item.is_dir() else '') for item in matches]
+    def draw() -> None:
+        nonlocal popup_rows
+        height, width = window.getmaxyx()
+        if height <= 0 or width <= 0:
+            return
+        rows = min(len(choices), max(0, height - 1), 8)
+        start = min(max(0, selected - rows + 1), max(0, len(choices) - rows))
+        clear_rows = max(rows, popup_rows)
+        for offset in range(clear_rows):
+            y = height - 2 - offset
+            if y >= 0:
+                put(window, y, 0, ' ' * width, width)
+        for offset, item in enumerate(choices[start : start + rows]):
+            y = height - 1 - rows + offset
+            text = item.label if item.label is not None else item.value
+            attr = curses.A_REVERSE if start + offset == selected else 0
+            put(window, y, 0, text.ljust(width), width, attr)
+        popup_rows = rows
 
+        label_width = _text_width(label)
+        available = max(0, width - label_width)
+        visible, cursor_column = _input_view(value, cursor, available)
+        put(window, height - 1, 0, (label + visible).ljust(width), width, status_attr)
+        try:
+            window.move(height - 1, min(width - 1, label_width + cursor_column))
+        except curses.error:
+            pass
+        window.refresh()
 
-def readline_path(label: str, initial: str = '') -> str | None:
-    """Read a path with Readline history, editing, and completion."""
-    import readline
-
-    previous_completer = readline.get_completer()
-    previous_delimiters = readline.get_completer_delims()
-    matches: list[str] = []
-
-    def complete(value: str, state: int) -> str | None:
-        nonlocal matches
-        if state == 0:
-            matches = _path_completions(value)
-        return matches[state] if state < len(matches) else None
-
-    def startup() -> None:
-        readline.insert_text(initial)
-
-    readline.set_completer(complete)
-    readline.set_completer_delims('')
-    readline.parse_and_bind('tab: complete')
-    readline.set_startup_hook(startup)
+    previous_cursor: int | None = None
     try:
         try:
-            print('\r\x1b[2K', end='', flush=True)
-            value = input(label)
-        except (EOFError, KeyboardInterrupt):
-            print()
-            return None
+            previous_cursor = curses.curs_set(1)
+        except curses.error:
+            pass
+        while True:
+            draw()
+            key = window.get_wch()
+            if key in ('\n', '\r', curses.KEY_ENTER):
+                if choices:
+                    choice = choices[selected]
+                    value = choice.value
+                    cursor = len(value)
+                    history_index = len(history_values)
+                    history_draft = value
+                    if not choice.accept:
+                        selected = 0
+                        refresh_choices()
+                        continue
+                result = os.path.expandvars(os.path.expanduser(value)) if complete_paths else value
+                _add_history(history, result)
+                return result
+            if key in ('\x1b', 27):
+                if choices:
+                    choices = []
+                    continue
+                return None
+            if key == '\t' and choices:
+                selected = (selected + 1) % len(choices)
+                continue
+            if key == curses.KEY_BTAB and choices:
+                selected = (selected - 1) % len(choices)
+                continue
+            if key == curses.KEY_RIGHT and choices:
+                choice = choices[selected]
+                value = choice.value
+                cursor = len(value)
+                selected = 0
+                if choice.accept:
+                    choices = []
+                else:
+                    refresh_choices()
+                continue
+            if key == '\t':
+                refresh_choices()
+                if len(choices) == 1:
+                    choice = choices[0]
+                    value = choice.value
+                    cursor = len(value)
+                    choices = []
+                    if not choice.accept:
+                        refresh_choices()
+                elif choices:
+                    common = os.path.commonprefix([choice.value for choice in choices])
+                    if cursor == len(value) and len(common) > len(value):
+                        value = common
+                        cursor = len(value)
+                        refresh_choices()
+                continue
+            if choices and key in (curses.KEY_UP, 'k', '\x10'):
+                selected = (selected - 1) % len(choices)
+                continue
+            if choices and key in (curses.KEY_DOWN, 'j', '\x0e'):
+                selected = (selected + 1) % len(choices)
+                continue
+            if key == curses.KEY_UP:
+                if history_values and history_index > 0:
+                    if history_index == len(history_values):
+                        history_draft = value
+                    history_index -= 1
+                    value = history_values[history_index]
+                    cursor = len(value)
+                continue
+            if key == curses.KEY_DOWN:
+                if history_index < len(history_values):
+                    history_index += 1
+                    value = history_draft if history_index == len(history_values) else history_values[history_index]
+                    cursor = len(value)
+                continue
+            if key == curses.KEY_PPAGE and choices:
+                selected = max(0, selected - 8)
+                continue
+            if key == curses.KEY_NPAGE and choices:
+                selected = min(len(choices) - 1, selected + 8)
+                continue
+
+            old_value = value
+            if key in ('\b', '\x7f') or key == curses.KEY_BACKSPACE:
+                if cursor > 0:
+                    value = value[: cursor - 1] + value[cursor:]
+                    cursor -= 1
+            elif key == curses.KEY_DC:
+                value = value[:cursor] + value[cursor + 1 :]
+            elif key in (curses.KEY_LEFT, '\x02'):
+                cursor = max(0, cursor - 1)
+            elif key in (curses.KEY_RIGHT, '\x06'):
+                cursor = min(len(value), cursor + 1)
+            elif key in (curses.KEY_HOME, '\x01'):
+                cursor = 0
+            elif key in (curses.KEY_END, '\x05'):
+                cursor = len(value)
+            elif key == '\x15':
+                value = value[cursor:]
+                cursor = 0
+            elif isinstance(key, str) and key.isprintable():
+                value = value[:cursor] + key + value[cursor:]
+                cursor += len(key)
+
+            if value != old_value:
+                history_index = len(history_values)
+                history_draft = value
+            if choices:
+                refresh_choices()
     finally:
-        readline.set_startup_hook()
-        readline.set_completer(previous_completer)
-        readline.set_completer_delims(previous_delimiters)
-    return os.path.expandvars(os.path.expanduser(value))
+        if previous_cursor is not None:
+            try:
+                curses.curs_set(previous_cursor)
+            except curses.error:
+                pass
 
 
 def pager(window: curses.window, title: str, text: str, header_attr: int) -> int:
