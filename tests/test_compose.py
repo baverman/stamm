@@ -8,12 +8,13 @@ from typing import Any
 
 import pytest
 
-from stamm import app as app_module
+import stamm.views.compose as compose_view_module
 from stamm import compose, delivery, ui
 from stamm.app import App
 from stamm.compose import ComposeData
 from stamm.config import Config
 from stamm.config_model import DEFAULT_COLORS, HooksConfig
+from stamm.views.compose import ComposeView
 
 
 @pytest.fixture
@@ -104,24 +105,31 @@ def test_successful_reply_sets_maildir_replied_flag(config: Config, monkeypatch:
     calls: list[tuple[str, str]] = []
     reloaded: list[bool] = []
     index = SimpleNamespace(set_flags=lambda key, *, add: calls.append((key, add)))
-    state = SimpleNamespace(index=index, reload_cached=lambda: reloaded.append(True))
+    state = SimpleNamespace(index=index, reload=lambda: reloaded.append(True))
     screen = SimpleNamespace(refresh=lambda: None)
+    notices: list[str] = []
     app = object.__new__(App)
     app.config = config
-    app.state = state
     app.screen = screen
     app.theme = SimpleNamespace(status=0, header=0)
-    app.notice = ''
+    view = ComposeView(
+        data,
+        notices.append,
+        replied_state=state,  # type: ignore[arg-type]
+        replied_index=state,  # type: ignore[arg-type]
+        replied_key='message-key',
+    )
+    app.stack = [view]
 
-    monkeypatch.setattr(app_module.curses, 'def_prog_mode', lambda: None)
-    monkeypatch.setattr(app_module.curses, 'endwin', lambda: None)
-    monkeypatch.setattr(app_module.curses, 'reset_prog_mode', lambda: None)
+    monkeypatch.setattr(compose_view_module.curses, 'def_prog_mode', lambda: None)
+    monkeypatch.setattr(compose_view_module.curses, 'endwin', lambda: None)
+    monkeypatch.setattr(compose_view_module.curses, 'reset_prog_mode', lambda: None)
     monkeypatch.setattr(compose, 'edit', lambda *_args: (data, True))
     monkeypatch.setattr(ui, 'choose', lambda *_args, **_kwargs: 's')
     monkeypatch.setattr(delivery, 'send', lambda *_args: Path('/tmp/sent'))
 
-    app.compose(data, replied_key='message-key')
+    view.run(app)
 
     assert calls == [('message-key', 'R')]
     assert reloaded == [True]
-    assert app.notice == 'message sent'
+    assert notices == ['message sent']

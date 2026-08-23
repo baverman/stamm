@@ -53,11 +53,9 @@ def test_one_out_file_captures_stdout_and_stderr() -> None:
     process.wait(timeout=5)
     manager._temporary.append(_OpenProcess(directory, process, output, 'test opener'))
 
-    errors = manager.reap()
+    result = manager.reap()
 
-    assert len(errors) == 1
-    assert 'exit status: 7' in errors[0]
-    assert 'output:\nstdoutstderr' in errors[0]
+    assert result is None
     assert not Path(directory.name).exists()
 
 
@@ -73,7 +71,7 @@ def test_successful_opener_keeps_temporary_file_until_manager_closes() -> None:
     process.wait(timeout=5)
     manager._temporary.append(_OpenProcess(directory, process, output, 'test opener'))
 
-    assert manager.reap() == []
+    assert manager.reap() is None
     assert source.exists()
 
     manager.close()

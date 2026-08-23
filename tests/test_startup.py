@@ -6,9 +6,11 @@ from typing import Any, cast
 
 import pytest
 
-from stamm.app import App, MaildirState
+from stamm.app import App
 from stamm.index import MessageIndex
 from stamm.maildir import ensure_maildir, store
+from stamm.state import MaildirState
+from stamm.views.index import IndexView
 
 
 def _message(subject: str) -> bytes:
@@ -40,9 +42,7 @@ def test_maildir_state_opens_cached_rows_before_reconciliation(tmp_path: Path) -
 def test_reconcile_paints_index_before_scanning(monkeypatch: pytest.MonkeyPatch) -> None:
     events: list[str] = []
 
-    class State:
-        rows: list[object] = []
-
+    class State(MaildirState):
         def refresh(self) -> None:
             events.append('reconcile')
 
@@ -50,12 +50,12 @@ def test_reconcile_paints_index_before_scanning(monkeypatch: pytest.MonkeyPatch)
         def refresh(self) -> None:
             events.append('refresh')
 
+    state = State([], 0, 0, Path('.'), cast(Any, None), set())
+    view = IndexView(state, reconcile=True)
     app = object.__new__(App)
-    app.state = cast(Any, State())
     app.screen = cast(Any, Screen())
-    app.notice = ''
-    monkeypatch.setattr(app, 'draw_index', lambda: events.append(f'draw:{app.notice}'))
+    monkeypatch.setattr(view, 'draw', lambda _app: events.append(f'draw:{view.notice}'))
 
-    app.reconcile()
+    view._reconcile(app)
 
     assert events == ['draw:indexing...', 'refresh', 'reconcile']

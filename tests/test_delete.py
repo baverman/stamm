@@ -6,11 +6,13 @@ from pathlib import Path
 import pytest
 
 from stamm import ui
-from stamm.app import App, MaildirState
+from stamm.app import App
 from stamm.config import Config
 from stamm.config_model import DEFAULT_COLORS, HooksConfig
 from stamm.index import MessageIndex
 from stamm.maildir import ensure_maildir, store
+from stamm.state import MaildirState
+from stamm.views.index import IndexView
 
 
 def test_move_to_trash_moves_file_and_removes_index_record(tmp_path: Path) -> None:
@@ -74,26 +76,28 @@ def test_mark_keeps_message_until_purge(tmp_path: Path, monkeypatch: pytest.Monk
     )
     state = MaildirState.open(inbox)
     state.refresh()
-    app = App(object(), config, state, ui.CursesTheme(0, 0, 0, 0, 0, 0, 0, 0))  # type: ignore[arg-type]
-    monkeypatch.setattr(app, 'reconcile', lambda: app.state.refresh())
+    app = App(object(), config, ui.CursesTheme(0, 0, 0, 0, 0, 0, 0, 0))  # type: ignore[arg-type]
+    app.maildirs[inbox.resolve()] = state
+    view = IndexView(state)
+    app.push(view)
     try:
         key = state.rows[0].message.key
 
-        app.mark_deleted()
+        view._mark_deleted(app)
         state.offset = 9
         other = tmp_path / 'other'
         ensure_maildir(other)
         app.open_maildir(other)
-        other_state = app.state
+        other_state = app.maildirs[other.resolve()]
         app.open_maildir(inbox)
 
-        assert app.state is state
-        assert app.state is not other_state
+        assert app.stack[-1].state is state  # type: ignore[attr-defined]
+        assert state is not other_state
         assert state.offset == 9
 
         assert source.exists()
         assert key in state.pending_delete
-        assert app.purge_deleted() == []
+        assert state.purge_deleted(config.trash) == []
         assert not source.exists()
         assert not state.pending_delete
         assert len(list((trash / 'new').iterdir())) == 1

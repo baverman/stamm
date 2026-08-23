@@ -134,24 +134,16 @@ class MimeManager:
         assert isinstance(process, subprocess.Popen)
         self._temporary.append(_OpenProcess(directory, process, output, command))
 
-    def reap(self) -> list[str]:
+    def reap(self) -> None:
         active: list[_OpenProcess] = []
-        errors: list[str] = []
         for entry in self._temporary:
             status = entry.process.poll()
             if status in (None, 0):
                 # Delegating openers can exit before the receiving application reads the file.
                 active.append(entry)
                 continue
-            if status:
-                try:
-                    output = entry.output.read_text(encoding='utf-8', errors='replace').strip()
-                except OSError as exc:
-                    output = f'[cannot read opener output: {exc}]'
-                errors.append(f'command: {entry.command}\nexit status: {status}\noutput:\n{output or "[empty]"}')
             entry.directory.cleanup()
         self._temporary = active
-        return errors
 
     def close(self) -> None:
         for entry in self._temporary:
