@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import curses
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 from stamm import keys, ui
+from stamm.config_model import DEFAULT_COLORS, ColorStyle
 from stamm.ui import format_index_date, format_sender, viewport_start, wrap_text
 from stamm.views.choose import ChooseView
 
@@ -96,7 +99,7 @@ def test_choose_maps_generic_and_explicit_keys(
     monkeypatch.setattr(ui, 'status', lambda *_args: None)
     ChooseView.compiled_actions, diagnostics = keys.compile_bindings(ChooseView.namespace, ChooseView.actions, {})
     assert not diagnostics
-    theme = ui.CursesTheme(0, 0, 0, 0, 0, 0, 0, 0)
+    theme = ui.CursesTheme(0, 0, 0, 0, ui.IndexTheme(0, 0, 0, 0))
     context = ui.UIContext(_ChoiceWindow(key), theme)  # type: ignore[arg-type]
 
     assert (
@@ -107,6 +110,18 @@ def test_choose_maps_generic_and_explicit_keys(
         ).run(context)
         == expected
     )
+
+
+def test_theme_node_caches_nested_nodes_and_resolved_styles() -> None:
+    style = ColorStyle('green', None, ())
+    colors = replace(DEFAULT_COLORS, index=replace(DEFAULT_COLORS.index, column_from=style))
+    resolved: list[ColorStyle | None] = []
+    theme = cast(ui.CursesTheme, ui.ThemeNode(colors, lambda value: resolved.append(value) or 42))
+
+    assert theme.index is theme.index
+    assert theme.index.column_from == 42
+    assert theme.index.column_from == 42
+    assert resolved == [style]
 
 
 def test_path_completions_include_matching_directories_and_files(tmp_path: Path) -> None:

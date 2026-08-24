@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from stamm.config import load_config
-from stamm.config_model import DEFAULT_COLORS
+from stamm.config_model import ColorStyle
 
 
 def test_nested_hooks_config_and_typed_defaults(tmp_path: Path) -> None:
@@ -22,7 +22,9 @@ def test_nested_hooks_config_and_typed_defaults(tmp_path: Path) -> None:
                 '[hooks]',
                 'pre_refresh = "sync {maildir}"',
                 '[index]',
-                'format = "{sender:15} {subject:*}"',
+                'format = "{from:15} {subject:*}"',
+                '[colors.index]',
+                'column_from = { fg = "green" }',
                 '[keys.index]',
                 '"^N" = "down"',
             )
@@ -33,6 +35,7 @@ def test_nested_hooks_config_and_typed_defaults(tmp_path: Path) -> None:
     config = load_config(path)
 
     assert config.hooks.pre_refresh == 'sync {maildir}'
-    assert config.colors == DEFAULT_COLORS
-    assert config.index.format == '{sender:15} {subject:*}'
+    assert config.colors.index.column_from == ColorStyle('green', None, ())
+    assert config.colors.normal is None
+    assert config.index.format == '{from:15} {subject:*}'
     assert config.keys == {'index': {'^N': 'down'}}

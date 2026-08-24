@@ -7,12 +7,15 @@ import os
 import time
 import unicodedata
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, is_dataclass
 from datetime import datetime
 from email.utils import parseaddr
 from pathlib import Path
+from typing import Any, cast
 
-from .config_model import ColorConfig, ColorStyle
+from .config_model import ColorStyle
+from .theme import CursesTheme
+from .theme import IndexTheme as IndexTheme
 
 MONTHS = ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')
 COLOR_INDEXES = {
@@ -42,16 +45,22 @@ COLOR_ATTRIBUTES = {
 }
 
 
-@dataclass(frozen=True, slots=True)
-class CursesTheme:
-    normal: int
-    header: int
-    status: int
-    indicator: int
-    index_date: int
-    index_flags: int
-    index_sender: int
-    index_subject: int
+class ThemeNode:
+    def __init__(self, values: object, resolve: Callable[[ColorStyle | None], int]) -> None:
+        self._values = values
+        self._resolve = resolve
+
+    def __getattr__(self, name: str) -> object:
+        value = getattr(self._values, name)
+        result: object
+        if value is None or isinstance(value, ColorStyle):
+            result = self._resolve(value)
+        elif is_dataclass(value):
+            result = ThemeNode(value, self._resolve)
+        else:
+            raise TypeError(f'unsupported theme value: {value!r}')
+        setattr(self, name, result)
+        return result
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,7 +85,7 @@ def _attributes(names: tuple[str, ...]) -> int:
     return result
 
 
-def initialize_colors(window: curses.window, colors: ColorConfig) -> CursesTheme:
+def initialize_colors(window: curses.window, colors: Any) -> CursesTheme:
     """Allocate curses color pairs and return their final attributes."""
     normal = colors.normal or ColorStyle('default', 'default', ())
     normal_fg = 'default' if normal.fg is None else normal.fg
@@ -113,16 +122,7 @@ def initialize_colors(window: curses.window, colors: ColorConfig) -> CursesTheme
             pairs[colors_key] = pair
         return result | curses.color_pair(pair)
 
-    theme = CursesTheme(
-        normal=attr(normal),
-        header=attr(colors.header),
-        status=attr(colors.status),
-        indicator=attr(colors.indicator),
-        index_date=attr(colors.index_date),
-        index_flags=attr(colors.index_flags),
-        index_sender=attr(colors.index_sender),
-        index_subject=attr(colors.index_subject),
-    )
+    theme = cast(CursesTheme, ThemeNode(colors, attr))
     window.bkgd(' ', theme.normal)
     return theme
 

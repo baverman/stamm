@@ -87,10 +87,10 @@ class IndexView(MailActionsMixin, DefaultActionView):
         )
         flexible_width = max(0, width - fixed_width)
         styles = {
-            'date': theme.index_date,
-            'flags': theme.index_flags,
-            'sender': theme.index_sender,
-            'subject': theme.index_subject,
+            'date': theme.index.column_date,
+            'flags': theme.index.column_flags,
+            'from': theme.index.column_from,
+            'subject': theme.index.column_subject,
         }
         for y, row in enumerate(self.state.rows[start : start + visible], 1):
             item = row.message
@@ -105,7 +105,7 @@ class IndexView(MailActionsMixin, DefaultActionView):
             values = {
                 'date': ui.format_index_date(item.timestamp),
                 'flags': flags,
-                'sender': ui.format_sender(item.sender),
+                'from': ui.format_sender(item.sender),
                 'subject': '  ' * row.depth + item.subject.replace('\n', ' '),
             }
             selected = start + y - 1 == self.state.selected
