@@ -1,88 +1,57 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from email.message import EmailMessage
 from typing import ClassVar
 
-from .. import compose, keys, ui
-from ..config import config
-from ..index import IndexedMessage
-from ..message import header_block, parse_message, select_body
-from ..mime import MimeManager
-from ..state import IndexState, MaildirState
-from . import GLOBAL_ACTIONS, MAIL_ACTIONS, ChangeView
-from .compose import ComposeView
-from .pager import PagerView
+from .. import keys, ui
+from ..message import header_block
+from . import GLOBAL_ACTIONS, MAIL_ACTIONS, ChangeView, DefaultActionView
+from .pager import PagerWidget
+
+MessageAction = Callable[[str, Callable[[str], None]], ChangeView]
 
 
 @dataclass
-class MessageView:
+class MessageView(DefaultActionView):
     namespace: ClassVar[str] = 'message'
     actions: ClassVar[keys.ActionSet] = GLOBAL_ACTIONS | MAIL_ACTIONS
     compiled_actions: ClassVar[keys.Bindings] = {}
-    maildir: MaildirState
-    index_state: IndexState
-    item: IndexedMessage
-    mime: MimeManager
-    message: EmailMessage | None = field(default=None, init=False)
-    body: str = field(default='', init=False)
-    notice: str = field(default='', init=False)
 
-    def _open(self) -> None:
-        if 'S' not in self.item.flags:
-            self.item = self.maildir.index.set_flags(self.item.key, add='S')
-            self.maildir.reload()
-            if self.index_state is not self.maildir:
-                self.index_state.reload()
-        self.message = parse_message(self.maildir.path / self.item.path)
-        part = select_body(self.message, config)
-        if part is None:
-            self.body = '[No displayable body. Press v to inspect MIME parts.]'
-            return
-        try:
-            self.body = self.mime.display(part)
-        except Exception as exc:
-            self.body = f'[Cannot display {part.get_content_type()}: {exc}]'
+    message: EmailMessage
+    body: str
+    action: MessageAction
+    notice: str = field(default='', init=False)
+    pager: PagerWidget = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.pager = PagerWidget(self.message.get('Subject', ''), '')
 
     def _set_notice(self, notice: str) -> None:
         self.notice = notice
 
-    def run(self, context: ui.UIContext) -> ChangeView:
-        if self.message is None:
-            self._open()
-        assert self.message is not None
-        while True:
-            text = header_block(self.message) + '\n\n' + self.body
-            if self.notice:
-                text += f'\n\n[{self.notice}]'
-                self.notice = ''
-            pressed = PagerView(self.item.subject, text).run(context)
-            action = keys.resolve(self.compiled_actions, pressed)
-            if action == 'back':
-                return ChangeView.close()
-            if action == 'parts':
-                from .parts import PartsView
+    def draw(self, context: ui.UIContext) -> None:
+        text = header_block(self.message) + '\n\n' + self.body
+        if not self.pager.text:
+            self.pager.text = text
+        if self.notice:
+            self.pager.text = text + f'\n\n[{self.notice}]'
+            self.notice = ''
+        self.pager.draw(context)
 
-                return ChangeView.push(PartsView(self.message, self.mime))
-            if action == 'reply':
-                return ChangeView.push(
-                    ComposeView(
-                        compose.reply(self.message, self.body, config),
-                        self._set_notice,
-                        replied_state=self.maildir,
-                        replied_index=self.index_state,
-                        replied_key=self.item.key,
-                    )
-                )
-            if action == 'reply_all':
-                return ChangeView.push(
-                    ComposeView(
-                        compose.reply(self.message, self.body, config, all_recipients=True),
-                        self._set_notice,
-                        replied_state=self.maildir,
-                        replied_index=self.index_state,
-                        replied_key=self.item.key,
-                    )
-                )
-            if action == 'forward':
-                return ChangeView.push(ComposeView.forward(self.message, self.body, self._set_notice))
+    def on_unknown(self, context: ui.UIContext, ch: keys.Key) -> ChangeView | None:
+        action = keys.resolve(PagerWidget.compiled_actions, ch)
+        return self.pager.handle(context, action, ch)
+
+    def on_parts(self, context: ui.UIContext) -> ChangeView:
+        return self.action('parts', self._set_notice)
+
+    def on_reply(self, context: ui.UIContext) -> ChangeView:
+        return self.action('reply', self._set_notice)
+
+    def on_reply_all(self, context: ui.UIContext) -> ChangeView:
+        return self.action('reply_all', self._set_notice)
+
+    def on_forward(self, context: ui.UIContext) -> ChangeView:
+        return self.action('forward', self._set_notice)

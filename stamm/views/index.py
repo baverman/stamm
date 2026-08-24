@@ -14,15 +14,7 @@ from ..message import parse_message, select_body
 from ..mime import MimeManager
 from ..search import parse_query
 from ..state import IndexState, MaildirState, SearchState
-from . import (
-    GLOBAL_ACTIONS,
-    MAIL_ACTIONS,
-    MOVE_ACTIONS,
-    PAGE_ACTIONS,
-    ChangeView,
-    ChangeViewHandlerMixin,
-    HandlerView,
-)
+from . import GLOBAL_ACTIONS, MAIL_ACTIONS, MOVE_ACTIONS, PAGE_ACTIONS, ChangeView, DefaultActionView
 from .compose import ComposeView
 from .pager import PagerView
 
@@ -48,7 +40,7 @@ def _command_completer(value: str, cursor: int) -> list[ui.Completion]:
 
 
 @dataclass
-class IndexView(ChangeViewHandlerMixin, HandlerView[ChangeView]):
+class IndexView(DefaultActionView):
     namespace: ClassVar[str] = 'index'
     actions: ClassVar[keys.ActionSet] = (
         GLOBAL_ACTIONS
@@ -284,17 +276,50 @@ class IndexView(ChangeViewHandlerMixin, HandlerView[ChangeView]):
         if self.state.rows:
             self.state.selected = len(self.state.rows) - 1
 
+    def _message_action(
+        self,
+        action: str,
+        message: EmailMessage,
+        body: str,
+        key: str,
+        notice: Callable[[str], None],
+    ) -> ChangeView:
+        if action == 'parts':
+            from .parts import PartsView
+
+            return ChangeView.push(PartsView(message, self.mime))
+        if action == 'forward':
+            return ChangeView.push(ComposeView.forward(message, body, notice))
+        if action not in ('reply', 'reply_all'):
+            raise ValueError(f'unknown message action: {action}')
+        return ChangeView.push(
+            ComposeView(
+                compose.reply(message, body, config, all_recipients=action == 'reply_all'),
+                notice,
+                replied_state=self.maildir,
+                replied_index=self.state,
+                replied_key=key,
+            )
+        )
+
     def on_open(self, context: ui.UIContext) -> ChangeView | None:
         if not self.state.rows:
             return None
         from .message import MessageView
 
+        item = self.state.selected_message
+        if 'S' not in item.flags:
+            item = self.maildir.index.set_flags(item.key, add='S')
+            self.maildir.reload()
+            if self.state is not self.maildir:
+                self.state.reload()
+        message = parse_message(self.maildir.path / item.path)
+        body = self._render_body(message)
         return ChangeView.push(
             MessageView(
-                self.maildir,
-                self.state,
-                self.state.selected_message,
-                self.mime,
+                message,
+                body,
+                lambda action, notice: self._message_action(action, message, body, item.key, notice),
             )
         )
 

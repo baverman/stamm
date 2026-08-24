@@ -1,5 +1,3 @@
-"""Command-line entry point."""
-
 from __future__ import annotations
 
 import argparse
@@ -15,7 +13,7 @@ from .config import ConfigError, config, load_config, set_config
 from .views.choose import ChooseView
 from .views.index import IndexView
 from .views.message import MessageView
-from .views.pager import PagerView
+from .views.pager import PagerView, PagerWidget
 from .views.parts import PartsView
 
 
@@ -42,7 +40,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         set_config(load_config())
         diagnostics: list[str] = []
-        views = (IndexView, MessageView, PartsView, PagerView, ChooseView)
+        views = (IndexView, MessageView, PartsView, PagerWidget, PagerView, ChooseView)
 
         for view in views:
             view.compiled_actions, current = keys.compile_bindings(
@@ -51,7 +49,6 @@ def main(argv: list[str] | None = None) -> int:
                 config.keys.get(view.namespace, {}),
             )
             diagnostics.extend(current)
-
         known_namespaces = {view.namespace for view in views}
         for namespace in config.keys.keys() - known_namespaces:
             diagnostics.append(f'keys.{namespace}: unknown namespace')

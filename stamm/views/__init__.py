@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import ClassVar, Literal, Protocol, Self, cast
 
 from .. import keys, ui
-from ..keys import ActionSet, Bindings
+from ..keys import ActionSet, Bindings, Key
 
 GLOBAL_ACTIONS: ActionSet = {
     'back': ('q',),
@@ -63,18 +63,33 @@ class View[T](Protocol):
     def run(self, context: ui.UIContext) -> T: ...
 
 
-class ActionView[T](View[T], Protocol):
+class ActionSpec:
     namespace: ClassVar[str]
     actions: ClassVar[ActionSet]
     compiled_actions: ClassVar[Bindings]
 
 
-class HandlerView[T](ActionView[T]):
+class ActionHandler[T](ActionSpec):
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()
         missing = [f'on_{action}' for action in cls.actions if not callable(getattr(cls, f'on_{action}', None))]
         if missing:
             raise TypeError(f'{cls.__name__} is missing action handlers: {", ".join(missing)}')
+
+    def get_action(self, context: ui.UIContext) -> tuple[str | None, Key]:
+        return keys.read(context.screen, self.compiled_actions)
+
+    def handle(self, context: ui.UIContext, action: str | None, ch: Key) -> T | None:
+        if action is None:
+            return self.on_unknown(context, ch)
+        return cast(Callable[[ui.UIContext], T | None], getattr(self, f'on_{action}'))(context)
+
+    def on_unknown(self, context: ui.UIContext, ch: Key) -> T | None:
+        return None
+
+
+class ActionView[T](View[T], ActionHandler[T]):
+    actions = {}
 
     @abstractmethod
     def draw(self, context: ui.UIContext) -> None: ...
@@ -82,15 +97,12 @@ class HandlerView[T](ActionView[T]):
     def run(self, context: ui.UIContext) -> T:
         while True:
             self.draw(context)
-            action, _ch = keys.read(context.screen, self.compiled_actions)
-            if action is None:
-                continue
-            handler = cast(Callable[[ui.UIContext], T | None], getattr(self, f'on_{action}'))
-            result = handler(context)
+            action, ch = self.get_action(context)
+            result = self.handle(context, action, ch)
             if result is not None:
                 return result
 
 
-class ChangeViewHandlerMixin:
+class DefaultActionView(ActionView[ChangeView]):
     def on_back(self, context: ui.UIContext) -> ChangeView | None:
         return ChangeView.close()

@@ -7,11 +7,11 @@ from typing import ClassVar
 
 from .. import keys, ui
 from ..mime import MimeManager, PartRow, part_rows, save_part
-from . import GLOBAL_ACTIONS, MOVE_ACTIONS, ChangeView, ChangeViewHandlerMixin, HandlerView
+from . import GLOBAL_ACTIONS, MOVE_ACTIONS, DefaultActionView
 
 
 @dataclass
-class PartsView(ChangeViewHandlerMixin, HandlerView[ChangeView]):
+class PartsView(DefaultActionView):
     namespace: ClassVar[str] = 'parts'
     actions: ClassVar[keys.ActionSet] = GLOBAL_ACTIONS | MOVE_ACTIONS | {'open': ('ENTER',), 'save': ('s',)}
     compiled_actions: ClassVar[keys.Bindings] = {}
