@@ -72,7 +72,12 @@ def identities(value: object) -> tuple[str, ...]:
 class ColorStyle:
     fg: str | None = optfield(color)
     bg: str | None = optfield(color)
-    attrs: tuple[str, ...] = field(as_tuple(color_attribute), default=(), required=False)
+    attrs: tuple[str, ...] | None = optfield(as_tuple(color_attribute))
+
+    def fallback(self, other: ColorStyle) -> ColorStyle:
+        return ColorStyle(
+            self.fg or other.fg, self.bg or other.bg, self.attrs if self.attrs is not None else other.attrs
+        )
 
 
 def config_from_theme(theme: type[Any], name: str) -> type[Any]:

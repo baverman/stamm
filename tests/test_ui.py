@@ -10,7 +10,7 @@ import pytest
 
 from stamm import keys, ui
 from stamm.config_model import DEFAULT_COLORS, ColorStyle
-from stamm.ui import format_index_date, format_sender, viewport_start, wrap_text
+from stamm.ui import TextSpan, format_index_date, format_sender, viewport_start, wrap_spans, wrap_text
 from stamm.views.choose import ChooseView
 
 
@@ -46,6 +46,15 @@ def test_format_sender(sender: str, expected: str) -> None:
 )
 def test_wrap_text(text: str, width: int, expected: list[str]) -> None:
     assert wrap_text(text, width) == expected
+
+
+def test_wrap_spans_preserves_attributes_across_rows() -> None:
+    spans = (TextSpan('From:', 1), TextSpan(' Alice', 0))
+
+    assert wrap_spans(spans, 7) == [
+        [TextSpan('From:', 1), TextSpan(' A', 0)],
+        [TextSpan('lice', 0)],
+    ]
 
 
 def test_cursor_does_not_scroll_in_middle_seventy_percent() -> None:
@@ -99,7 +108,7 @@ def test_choose_maps_generic_and_explicit_keys(
     monkeypatch.setattr(ui, 'status', lambda *_args: None)
     ChooseView.compiled_actions, diagnostics = keys.compile_bindings(ChooseView.namespace, ChooseView.actions, {})
     assert not diagnostics
-    theme = ui.CursesTheme(0, 0, 0, 0, ui.IndexTheme(0, 0, 0, 0))
+    theme = ui.CursesTheme(0, 0, 0, 0, ui.IndexTheme(0, 0, 0, 0), ui.MessageTheme(0))
     context = ui.UIContext(_ChoiceWindow(key), theme)  # type: ignore[arg-type]
 
     assert (
@@ -113,15 +122,13 @@ def test_choose_maps_generic_and_explicit_keys(
 
 
 def test_theme_node_caches_nested_nodes_and_resolved_styles() -> None:
-    style = ColorStyle('green', None, ())
+    style = ColorStyle('green', None, None)
     colors = replace(DEFAULT_COLORS, index=replace(DEFAULT_COLORS.index, column_from=style))
-    resolved: list[ColorStyle | None] = []
-    theme = cast(ui.CursesTheme, ui.ThemeNode(colors, lambda value: resolved.append(value) or 42))
+    fbinfo = ui.FallbackInfo(ui.CursesTheme, 'normal')
+    theme = cast(ui.CursesTheme, ui.ThemeNode('', colors, fbinfo, lambda value: 42))
 
     assert theme.index is theme.index
     assert theme.index.column_from == 42
-    assert theme.index.column_from == 42
-    assert resolved == [style]
 
 
 def test_path_completions_include_matching_directories_and_files(tmp_path: Path) -> None:

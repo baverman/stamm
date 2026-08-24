@@ -76,7 +76,7 @@ def test_mark_keeps_message_until_purge(tmp_path: Path) -> None:
     set_config(config)
     state = MaildirState.open(inbox)
     state.refresh()
-    theme = ui.CursesTheme(0, 0, 0, 0, ui.IndexTheme(0, 0, 0, 0))
+    theme = ui.CursesTheme()
     context = ui.UIContext(object(), theme)  # type: ignore[arg-type]
     app = App(context)
     app.maildirs[inbox.resolve()] = state

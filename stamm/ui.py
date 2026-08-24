@@ -7,15 +7,15 @@ import os
 import time
 import unicodedata
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, is_dataclass
+from dataclasses import dataclass
 from datetime import datetime
 from email.utils import parseaddr
 from pathlib import Path
 from typing import Any, cast
 
-from .config_model import ColorStyle
-from .theme import CursesTheme
+from .theme import CursesTheme, FallbackInfo, Style, ThemeNode
 from .theme import IndexTheme as IndexTheme
+from .theme import MessageTheme as MessageTheme
 
 MONTHS = ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')
 COLOR_INDEXES = {
@@ -45,37 +45,22 @@ COLOR_ATTRIBUTES = {
 }
 
 
-class ThemeNode:
-    def __init__(self, values: object, resolve: Callable[[ColorStyle | None], int]) -> None:
-        self._values = values
-        self._resolve = resolve
-
-    def __getattr__(self, name: str) -> object:
-        value = getattr(self._values, name)
-        result: object
-        if value is None or isinstance(value, ColorStyle):
-            result = self._resolve(value)
-        elif is_dataclass(value):
-            result = ThemeNode(value, self._resolve)
-        else:
-            raise TypeError(f'unsupported theme value: {value!r}')
-        setattr(self, name, result)
-        return result
-
-
 @dataclass(frozen=True, slots=True)
 class UIContext:
     screen: curses.window
     theme: CursesTheme
 
 
+@dataclass(frozen=True, slots=True)
+class TextSpan:
+    text: str
+    attr: int = 0
+
+
 def _color_index(value: str) -> int:
     if value == 'default':
         return -1
-    index = int(value) if value.isdecimal() else COLOR_INDEXES[value]
-    if index >= curses.COLORS:
-        raise RuntimeError(f'terminal supports {curses.COLORS} colors, but color index {index} was requested')
-    return index
+    return int(value) if value.isdecimal() else COLOR_INDEXES[value]
 
 
 def _attributes(names: tuple[str, ...]) -> int:
@@ -86,10 +71,6 @@ def _attributes(names: tuple[str, ...]) -> int:
 
 
 def initialize_colors(window: curses.window, colors: Any) -> CursesTheme:
-    """Allocate curses color pairs and return their final attributes."""
-    normal = colors.normal or ColorStyle('default', 'default', ())
-    normal_fg = 'default' if normal.fg is None else normal.fg
-    normal_bg = 'default' if normal.bg is None else normal.bg
     pairs: dict[tuple[int, int], int] = {}
     next_pair = 1
     has_colors = curses.has_colors()
@@ -100,15 +81,12 @@ def initialize_colors(window: curses.window, colors: Any) -> CursesTheme:
         except curses.error as exc:
             raise RuntimeError(f'cannot initialize terminal colors: {exc}') from exc
 
-    def attr(style: ColorStyle | None) -> int:
+    def alloc_color(style: Style) -> int:
         nonlocal next_pair
-        style = style or ColorStyle(None, None, ())
-        result = _attributes(style.attrs)
+        result = _attributes(style.attrs or ())
         if not has_colors:
             return result
-        foreground = _color_index(normal_fg if style.fg is None else style.fg)
-        background = _color_index(normal_bg if style.bg is None else style.bg)
-        colors_key = (foreground, background)
+        colors_key = (_color_index(style.fg or 'default'), _color_index(style.bg or 'default'))
         pair = pairs.get(colors_key)
         if pair is None:
             if next_pair >= curses.COLOR_PAIRS:
@@ -116,13 +94,14 @@ def initialize_colors(window: curses.window, colors: Any) -> CursesTheme:
             pair = next_pair
             next_pair += 1
             try:
-                curses.init_pair(pair, foreground, background)
+                curses.init_pair(pair, *colors_key)
             except curses.error as exc:
                 raise RuntimeError(f'cannot initialize terminal colors: {exc}') from exc
             pairs[colors_key] = pair
         return result | curses.color_pair(pair)
 
-    theme = cast(CursesTheme, ThemeNode(colors, attr))
+    fbinfo = FallbackInfo(CursesTheme, 'normal')
+    theme = cast(CursesTheme, ThemeNode('', colors, fbinfo, alloc_color))
     window.bkgd(' ', theme.normal)
     return theme
 
@@ -183,6 +162,52 @@ def wrap_text(text: str, columns: int) -> list[str]:
             chunk.append(character)
             used += cell_width
         result.append(''.join(chunk))
+    return result
+
+
+def wrap_spans(spans: Sequence[TextSpan], columns: int) -> list[list[TextSpan]]:
+    columns = max(1, columns)
+    result: list[list[TextSpan]] = [[]]
+    used = 0
+    source_column = 0
+    ended_with_newline = False
+
+    def append(character: str, attr: int) -> None:
+        nonlocal used
+        cell_width = (
+            0
+            if unicodedata.combining(character)
+            else (2 if unicodedata.east_asian_width(character) in ('W', 'F') else 1)
+        )
+        if result[-1] and used + cell_width > columns:
+            result.append([])
+            used = 0
+        row = result[-1]
+        if row and row[-1].attr == attr:
+            row[-1] = TextSpan(row[-1].text + character, attr)
+        else:
+            row.append(TextSpan(character, attr))
+        used += cell_width
+
+    for span in spans:
+        for character in span.text.replace('\r\n', '\n').replace('\r', '\n'):
+            if character == '\n':
+                result.append([])
+                used = 0
+                source_column = 0
+                ended_with_newline = True
+                continue
+            ended_with_newline = False
+            if character == '\t':
+                spaces = 8 - source_column % 8
+                for _ in range(spaces):
+                    append(' ', span.attr)
+                source_column += spaces
+            else:
+                append(character, span.attr)
+                source_column += 1
+    if ended_with_newline:
+        result.pop()
     return result
 
 

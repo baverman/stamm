@@ -1,5 +1,7 @@
 .PHONY: fmt lint all
 
+all: fmt lint
+
 fmt:
 	ruff check --select I --fix
 	ruff format
@@ -7,5 +9,3 @@ fmt:
 lint:
 	ruff check
 	mypy
-
-all: fmt lint

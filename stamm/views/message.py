@@ -5,9 +5,10 @@ from email.message import EmailMessage
 from typing import ClassVar
 
 from .. import keys, ui
-from ..message import header_block
+from ..message import message_headers
 from ..mime import MimeManager
 from ..state import IndexState
+from ..theme import MessageTheme
 from . import GLOBAL_ACTIONS, MAIL_ACTIONS, ChangeView, DefaultActionView
 from .mail_actions import MailActionsMixin
 from .pager import PagerWidget
@@ -37,12 +38,23 @@ class MessageView(MailActionsMixin, DefaultActionView):
     def _mail_action_message(self) -> tuple[EmailMessage, str, str]:
         return self.message, self.body, self.key
 
+    def _pager_text(self, theme: MessageTheme) -> tuple[ui.TextSpan, ...]:
+        spans: list[ui.TextSpan] = []
+        for name, value in message_headers(self.message):
+            try:
+                attr = getattr(theme, 'header_' + name.lower())
+            except AttributeError:
+                attr = theme.header
+            spans.append(ui.TextSpan(f'{name}: {value}\n', attr))
+        spans.extend((ui.TextSpan('\n'), ui.TextSpan(self.body)))
+        return tuple(spans)
+
     def draw(self, context: ui.UIContext) -> None:
-        text = header_block(self.message) + '\n\n' + self.body
+        text = self._pager_text(context.theme.message)
         if not self.pager.text:
             self.pager.text = text
         if self.notice:
-            self.pager.text = text + f'\n\n[{self.notice}]'
+            self.pager.text = text + (ui.TextSpan(f'\n\n[{self.notice}]'),)
             self.notice = ''
         self.pager.draw(context)
 

@@ -54,9 +54,13 @@ def select_body(message: Message, config: Config) -> Message | None:
     return None
 
 
+def message_headers(message: Message) -> list[tuple[str, str]]:
+    names = ('Date', 'From', 'To', 'Cc', 'Subject')
+    return [(name, str(value)) for name in names if (value := message.get(name))]
+
+
 def header_block(message: Message) -> str:
-    names = ('From', 'To', 'Cc', 'Date', 'Subject')
-    return '\n'.join(f'{name}: {message.get(name, "")}' for name in names if message.get(name))
+    return '\n'.join(f'{name}: {value}' for name, value in message_headers(message))
 
 
 def quote(text: str) -> str:
