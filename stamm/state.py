@@ -20,6 +20,10 @@ class IndexState(ABC):
     def title(self) -> str: ...
 
     @property
+    @abstractmethod
+    def source_state(self) -> MaildirState: ...
+
+    @property
     def selected_message(self) -> IndexedMessage:
         return self.rows[self.selected].message
 
@@ -53,6 +57,10 @@ class MaildirState(IndexState):
     def title(self) -> str:
         return f'Stamm — {self.path}'
 
+    @property
+    def source_state(self) -> MaildirState:
+        return self
+
     def load_rows(self, messages: list[IndexedMessage]) -> None:
         key = self.selected_message.key if self.rows else None
         self.rows = build_threads(messages)
@@ -66,6 +74,9 @@ class MaildirState(IndexState):
 
     def reload(self) -> None:
         self.load_rows(self.index.messages())
+
+    def mark_replied(self, key: str) -> None:
+        self.index.set_flags(key, add='R')
 
     def mark_deleted(self, key: str) -> None:
         self.pending_delete.add(key)
@@ -104,6 +115,10 @@ class SearchState(IndexState):
     @property
     def title(self) -> str:
         return f'Search — {self.query}'
+
+    @property
+    def source_state(self) -> MaildirState:
+        return self.source
 
     def rebuild(self) -> None:
         key = self.selected_message.key if self.rows else None
