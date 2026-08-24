@@ -44,13 +44,13 @@ def main(argv: list[str] | None = None) -> int:
             curses.set_escdelay(100)
             screen.keypad(True)
             theme = ui.initialize_colors(screen, config.colors)
+            context = ui.UIContext(screen, theme)
             if diagnostics:
                 PagerView(
                     'Key binding warnings',
                     '\n'.join(diagnostics) + '\n\nPress any unbound key to continue.',
-                    theme,
-                ).run(screen)
-            app = App(screen, config, theme)
+                ).run(context)
+            app = App(context, config)
             app.open_maildir(selected)
             app.run()
 

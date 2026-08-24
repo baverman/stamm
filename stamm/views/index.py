@@ -1,15 +1,17 @@
 from __future__ import annotations
 
-import curses
 import shlex
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from string import Formatter
 from typing import TYPE_CHECKING, ClassVar
 
 from .. import compose, keys, ui
+from ..config import Config
 from ..message import parse_message, select_body
+from ..mime import MimeManager
 from ..search import parse_query
 from ..state import IndexState, MaildirState, SearchState
 from . import (
@@ -27,10 +29,10 @@ from .pager import PagerView
 if TYPE_CHECKING:
     from email.message import EmailMessage
 
-    from ..app import App
-
 
 COMMANDS = ('search',)
+COMMAND_HISTORY: list[str] = []
+MAILDIR_HISTORY: list[str] = []
 
 
 def _command_completer(value: str, cursor: int) -> list[ui.Completion]:
@@ -68,7 +70,9 @@ class IndexView(ChangeViewHandlerMixin, HandlerView[ChangeView]):
     )
     compiled_actions: ClassVar[keys.Bindings] = {}
     state: IndexState
-    app: App
+    config: Config
+    mime: MimeManager
+    open_maildir: Callable[[Path], IndexView]
     notice: str = ''
     reconcile: bool = False
 
@@ -79,11 +83,11 @@ class IndexView(ChangeViewHandlerMixin, HandlerView[ChangeView]):
         assert isinstance(self.state, SearchState)
         return self.state.source
 
-    def draw(self, screen: curses.window) -> None:
-        app = self.app
+    def draw(self, context: ui.UIContext) -> None:
+        screen = context.screen
         screen.erase()
         height, width = screen.getmaxyx()
-        theme = app.theme
+        theme = context.theme
         ui.put(screen, 0, 0, self.state.title.ljust(width), width, theme.header)
         visible = max(1, height - 2)
         self.state.offset = ui.viewport_start(self.state.selected, len(self.state.rows), visible, self.state.offset)
@@ -91,7 +95,7 @@ class IndexView(ChangeViewHandlerMixin, HandlerView[ChangeView]):
         deleted = self.maildir.pending_delete
         format_parts = [
             (literal, name, specification or '', conversion)
-            for literal, name, specification, conversion in Formatter().parse(app.config.index.format)
+            for literal, name, specification, conversion in Formatter().parse(self.config.index.format)
         ]
         fixed_width = sum(
             ui.text_width(literal) + (0 if name is None or specification == '*' else int(specification))
@@ -143,19 +147,19 @@ class IndexView(ChangeViewHandlerMixin, HandlerView[ChangeView]):
     def _message(self) -> EmailMessage:
         return parse_message(self.maildir.path / self.state.selected_message.path)
 
-    def _render_body(self, app: App, message: EmailMessage) -> str:
-        part = select_body(message, app.config)
+    def _render_body(self, message: EmailMessage) -> str:
+        part = select_body(message, self.config)
         if part is None:
             return '[No displayable body. Press v to inspect MIME parts.]'
         try:
-            return app.mime.display(part)
+            return self.mime.display(part)
         except Exception as exc:
             return f'[Cannot display {part.get_content_type()}: {exc}]'
 
     def _reload(self) -> None:
         self.state.reload()
 
-    def _search(self, app: App, command: str) -> ChangeView | None:
+    def _search(self, command: str) -> ChangeView | None:
         parts = command.split(maxsplit=1)
         name = parts[0] if parts else ''
         if name != 'search':
@@ -167,57 +171,59 @@ class IndexView(ChangeViewHandlerMixin, HandlerView[ChangeView]):
         except ValueError as exc:
             self.notice = str(exc)
             return None
-        view = IndexView(SearchState.create(self.maildir, query, terms), app)
+        view = IndexView(
+            SearchState.create(self.maildir, query, terms),
+            self.config,
+            self.mime,
+            self.open_maildir,
+        )
         if isinstance(self.state, SearchState):
             return ChangeView.replace(view)
         return ChangeView.push(view)
 
-    def _change_maildir(self, screen: curses.window) -> IndexView | None:
-        app = self.app
+    def _change_maildir(self, context: ui.UIContext) -> IndexView | None:
         value = ui.prompt(
-            screen,
+            context.screen,
             'Maildir: ',
-            str(app.config.root) + '/',
+            str(self.config.root) + '/',
             complete_paths=True,
             completer=ui.maildir_completer,
-            history=app.history('maildir'),
-            status_attr=app.theme.status,
+            history=MAILDIR_HISTORY,
+            status_attr=context.theme.status,
         )
         if not value:
             return None
         try:
-            return app.maildir_view(Path(value))
+            return self.open_maildir(Path(value))
         except (OSError, ValueError) as exc:
             self.notice = str(exc)
             return None
 
-    def _mark_deleted(self, app: App) -> None:
-        if self.maildir.path.resolve() == app.config.trash.resolve():
+    def _mark_deleted(self) -> None:
+        if self.maildir.path.resolve() == self.config.trash.resolve():
             self.notice = 'messages in Trash cannot be marked for deletion'
             return
         self.maildir.mark_deleted(self.state.selected_message.key)
         self.state.select_next()
         self.notice = 'marked for deletion'
 
-    def _manual_refresh(self, screen: curses.window) -> None:
-        app = self.app
-        if hook := app.config.hooks.pre_refresh:
+    def _manual_refresh(self, context: ui.UIContext) -> None:
+        if hook := self.config.hooks.pre_refresh:
             try:
                 command = [argument.replace('{maildir}', str(self.maildir.path)) for argument in shlex.split(hook)]
                 if not command:
                     raise ValueError('command is empty')
-                ui.status(screen, 'running pre-refresh hook...', app.theme.status)
+                ui.status(context.screen, 'running pre-refresh hook...', context.theme.status)
                 process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
                 output, _ = process.communicate()
             except (OSError, ValueError) as exc:
-                PagerView('Pre-refresh hook failed', str(exc), app.theme).run(screen)
+                PagerView('Pre-refresh hook failed', str(exc)).run(context)
             else:
                 if output:
                     PagerView(
                         'Pre-refresh hook output',
                         output.decode('utf-8', errors='replace'),
-                        app.theme,
-                    ).run(screen)
+                    ).run(context)
         self.maildir.refresh()
         self.notice = 'refreshed'
 
@@ -230,140 +236,144 @@ class IndexView(ChangeViewHandlerMixin, HandlerView[ChangeView]):
         if self.state is not self.maildir:
             self.state.reload()
 
-    def _resume(self, app: App) -> ComposeView | None:
-        if self.maildir.path.resolve() != app.config.drafts.resolve() or not self.state.rows:
+    def _resume(self) -> ComposeView | None:
+        if self.maildir.path.resolve() != self.config.drafts.resolve() or not self.state.rows:
             self.notice = 'resume is available only in the Drafts Maildir'
             return None
         old_path = self.maildir.path / self.state.selected_message.path
-        return ComposeView.resume(self._message(), old_path, app, self._resume_finished)
+        return ComposeView.resume(self._message(), old_path, self.config, self._resume_finished)
 
-    def _reconcile(self, screen: curses.window) -> None:
+    def _reconcile(self, context: ui.UIContext) -> None:
         self.notice = 'reconciling...' if self.state.rows else 'indexing...'
-        self.draw(screen)
-        screen.refresh()
+        self.draw(context)
+        context.screen.refresh()
         self.maildir.refresh()
         self.reconcile = False
 
-    def run(self, screen: curses.window) -> ChangeView:
+    def run(self, context: ui.UIContext) -> ChangeView:
         if self.reconcile:
-            self._reconcile(screen)
-        return super().run(screen)
+            self._reconcile(context)
+        return super().run(context)
 
-    def on_back(self, screen: curses.window) -> ChangeView | None:
-        if len(self.app.stack) == 1 and not self.app.confirm_exit():
-            return None
-        return ChangeView.close()
-
-    def on_down(self, screen: curses.window) -> None:
+    def on_down(self, context: ui.UIContext) -> None:
         if self.state.rows:
             self.state.select_next()
 
-    def on_up(self, screen: curses.window) -> None:
+    def on_up(self, context: ui.UIContext) -> None:
         if self.state.rows:
             self.state.select_previous()
 
-    def _move_page(self, screen: curses.window, direction: int) -> None:
+    def _move_page(self, context: ui.UIContext, direction: int) -> None:
         if not self.state.rows:
             return
-        visible = max(1, screen.getmaxyx()[0] - 2)
+        visible = max(1, context.screen.getmaxyx()[0] - 2)
         self.state.selected = min(
             len(self.state.rows) - 1,
             max(0, self.state.selected + direction * visible),
         )
 
-    def on_pageup(self, screen: curses.window) -> None:
-        self._move_page(screen, -1)
+    def on_pageup(self, context: ui.UIContext) -> None:
+        self._move_page(context, -1)
 
-    def on_pagedown(self, screen: curses.window) -> None:
-        self._move_page(screen, 1)
+    def on_pagedown(self, context: ui.UIContext) -> None:
+        self._move_page(context, 1)
 
-    def on_home(self, screen: curses.window) -> None:
+    def on_home(self, context: ui.UIContext) -> None:
         if self.state.rows:
             self.state.selected = 0
 
-    def on_end(self, screen: curses.window) -> None:
+    def on_end(self, context: ui.UIContext) -> None:
         if self.state.rows:
             self.state.selected = len(self.state.rows) - 1
 
-    def on_open(self, screen: curses.window) -> ChangeView | None:
+    def on_open(self, context: ui.UIContext) -> ChangeView | None:
         if not self.state.rows:
             return None
         from .message import MessageView
 
-        return ChangeView.push(MessageView(self.maildir, self.state, self.state.selected_message, self.app))
+        return ChangeView.push(
+            MessageView(
+                self.maildir,
+                self.state,
+                self.state.selected_message,
+                self.config,
+                self.mime,
+            )
+        )
 
-    def on_refresh(self, screen: curses.window) -> None:
+    def on_refresh(self, context: ui.UIContext) -> None:
         if self.state is self.maildir:
-            self._manual_refresh(screen)
+            self._manual_refresh(context)
 
-    def on_command(self, screen: curses.window) -> ChangeView | None:
-        app = self.app
+    def on_command(self, context: ui.UIContext) -> ChangeView | None:
         value = ui.prompt(
-            screen,
+            context.screen,
             ':',
             completer=_command_completer,
-            history=app.history('command'),
-            status_attr=app.theme.status,
+            history=COMMAND_HISTORY,
+            status_attr=context.theme.status,
         )
         if value is None:
             return None
-        return self._search(app, value)
+        return self._search(value)
 
-    def on_change(self, screen: curses.window) -> ChangeView | None:
-        view = self._change_maildir(screen)
+    def on_change(self, context: ui.UIContext) -> ChangeView | None:
+        view = self._change_maildir(context)
         return ChangeView.push(view) if view is not None else None
 
-    def on_compose(self, screen: curses.window) -> ChangeView:
-        app = self.app
-        return ChangeView.push(ComposeView(compose.new(app.config), self._set_notice, app))
+    def on_compose(self, context: ui.UIContext) -> ChangeView:
+        return ChangeView.push(ComposeView(compose.new(self.config), self._set_notice, self.config))
 
-    def on_parts(self, screen: curses.window) -> ChangeView | None:
+    def on_parts(self, context: ui.UIContext) -> ChangeView | None:
         if not self.state.rows:
             return None
         from .parts import PartsView
 
-        return ChangeView.push(PartsView(self._message(), self.app))
+        return ChangeView.push(PartsView(self._message(), self.mime))
 
     def _reply(self, all_recipients: bool) -> ChangeView | None:
         if not self.state.rows:
             return None
-        app = self.app
         message = self._message()
         return ChangeView.push(
             ComposeView(
-                compose.reply(message, self._render_body(app, message), app.config, all_recipients=all_recipients),
+                compose.reply(
+                    message,
+                    self._render_body(message),
+                    self.config,
+                    all_recipients=all_recipients,
+                ),
                 self._set_notice,
-                app,
+                self.config,
                 replied_state=self.maildir,
                 replied_index=self.state,
                 replied_key=self.state.selected_message.key,
             )
         )
 
-    def on_reply(self, screen: curses.window) -> ChangeView | None:
+    def on_reply(self, context: ui.UIContext) -> ChangeView | None:
         return self._reply(False)
 
-    def on_reply_all(self, screen: curses.window) -> ChangeView | None:
+    def on_reply_all(self, context: ui.UIContext) -> ChangeView | None:
         return self._reply(True)
 
-    def on_forward(self, screen: curses.window) -> ChangeView | None:
+    def on_forward(self, context: ui.UIContext) -> ChangeView | None:
         if not self.state.rows:
             return None
-        app = self.app
         message = self._message()
-        return ChangeView.push(ComposeView.forward(message, self._render_body(app, message), app, self._set_notice))
+        return ChangeView.push(ComposeView.forward(message, self._render_body(message), self.config, self._set_notice))
 
-    def on_delete(self, screen: curses.window) -> None:
+    def on_delete(self, context: ui.UIContext) -> None:
         if self.state.rows:
-            self._mark_deleted(self.app)
+            self._mark_deleted()
 
-    def on_undelete(self, screen: curses.window) -> None:
+    def on_undelete(self, context: ui.UIContext) -> None:
         if self.state.rows:
             self.maildir.unmark_deleted(self.state.selected_message.key)
             self.state.select_next()
             self.notice = 'deletion mark removed'
 
-    def on_flag(self, screen: curses.window) -> None:
+    def on_flag(self, context: ui.UIContext) -> None:
         if self.state.rows:
             item = self.state.selected_message
             self.maildir.index.set_flags(
@@ -373,11 +383,11 @@ class IndexView(ChangeViewHandlerMixin, HandlerView[ChangeView]):
             )
             self._reload()
 
-    def on_unread(self, screen: curses.window) -> None:
+    def on_unread(self, context: ui.UIContext) -> None:
         if self.state.rows:
             self.maildir.index.set_flags(self.state.selected_message.key, remove='S')
             self._reload()
 
-    def on_resume(self, screen: curses.window) -> ChangeView | None:
-        view = self._resume(self.app)
+    def on_resume(self, context: ui.UIContext) -> ChangeView | None:
+        view = self._resume()
         return ChangeView.push(view) if view is not None else None

@@ -12,7 +12,6 @@ from stamm.config_model import DEFAULT_COLORS, HooksConfig
 from stamm.index import MessageIndex
 from stamm.maildir import ensure_maildir, store
 from stamm.state import MaildirState
-from stamm.views.index import IndexView
 
 
 def test_move_to_trash_moves_file_and_removes_index_record(tmp_path: Path) -> None:
@@ -76,14 +75,15 @@ def test_mark_keeps_message_until_purge(tmp_path: Path) -> None:
     )
     state = MaildirState.open(inbox)
     state.refresh()
-    app = App(object(), config, ui.CursesTheme(0, 0, 0, 0, 0, 0, 0, 0))  # type: ignore[arg-type]
+    context = ui.UIContext(object(), ui.CursesTheme(0, 0, 0, 0, 0, 0, 0, 0))  # type: ignore[arg-type]
+    app = App(context, config)
     app.maildirs[inbox.resolve()] = state
-    view = IndexView(state, app)
+    view = app.maildir_view(inbox)
     app.stack.append(view)
     try:
         key = state.rows[0].message.key
 
-        view._mark_deleted(app)
+        view._mark_deleted()
         state.offset = 9
         other = tmp_path / 'other'
         ensure_maildir(other)

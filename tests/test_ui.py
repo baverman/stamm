@@ -97,14 +97,14 @@ def test_choose_maps_generic_and_explicit_keys(
     ChooseView.compiled_actions, diagnostics = keys.compile_bindings(ChooseView.namespace, ChooseView.actions, {})
     assert not diagnostics
     theme = ui.CursesTheme(0, 0, 0, 0, 0, 0, 0, 0)
+    context = ui.UIContext(_ChoiceWindow(key), theme)  # type: ignore[arg-type]
 
     assert (
         ChooseView(
             'Compose',
             {'s': 'send', 'e': 'edit', 'd': 'draft', 'x': 'discard'},
             primary='send',
-            theme=theme,
-        ).run(_ChoiceWindow(key))  # type: ignore[arg-type]
+        ).run(context)
         == expected
     )
 

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import curses
 from dataclasses import dataclass
 from typing import ClassVar
 
@@ -16,12 +15,11 @@ class PagerView:
 
     title: str
     text: str
-    theme: ui.CursesTheme
 
-    def run(self, screen: curses.window) -> keys.Key:
+    def run(self, context: ui.UIContext) -> keys.Key:
         """Display text and return the first event that is not a scroll action."""
         offset = 0
-        window = screen
+        window = context.screen
         while True:
             window.erase()
             height, width = window.getmaxyx()
@@ -29,7 +27,7 @@ class PagerView:
             visible = max(1, height - 1)
             maximum = max(0, len(lines) - visible)
             offset = min(offset, maximum)
-            ui.put(window, 0, 0, self.title.ljust(width), width, self.theme.header)
+            ui.put(window, 0, 0, self.title.ljust(width), width, context.theme.header)
             for row, line in enumerate(lines[offset : offset + visible], 1):
                 ui.put(window, row, 0, line, width - 1)
             window.refresh()

@@ -54,6 +54,12 @@ class CursesTheme:
     index_subject: int
 
 
+@dataclass(frozen=True, slots=True)
+class UIContext:
+    screen: curses.window
+    theme: CursesTheme
+
+
 def _color_index(value: str) -> int:
     if value == 'default':
         return -1

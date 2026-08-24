@@ -5,23 +5,21 @@ import tempfile
 from dataclasses import dataclass
 from email.message import EmailMessage
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import Callable
 
 from .. import compose, delivery, ui
+from ..config import Config
 from ..state import IndexState, MaildirState
 from . import ChangeView
 from .choose import ChooseView
 from .pager import PagerView
-
-if TYPE_CHECKING:
-    from ..app import App
 
 
 @dataclass
 class ComposeView:
     data: compose.ComposeData
     on_finish: Callable[[str], None]
-    app: App
+    config: Config
     old_draft: Path | None = None
     replied_state: MaildirState | None = None
     replied_index: IndexState | None = None
@@ -33,30 +31,31 @@ class ComposeView:
         cls,
         message: EmailMessage,
         rendered_body: str,
-        app: App,
+        config: Config,
         on_finish: Callable[[str], None],
     ) -> ComposeView:
         workspace = tempfile.TemporaryDirectory(prefix='stamm-forward-')
-        data = compose.forward(message, rendered_body, app.config, Path(workspace.name))
-        return cls(data, on_finish, app, workspace=workspace)
+        data = compose.forward(message, rendered_body, config, Path(workspace.name))
+        return cls(data, on_finish, config, workspace=workspace)
 
     @classmethod
     def resume(
         cls,
         message: EmailMessage,
         old_draft: Path,
-        app: App,
+        config: Config,
         on_finish: Callable[[str], None],
     ) -> ComposeView:
         workspace = tempfile.TemporaryDirectory(prefix='stamm-draft-')
         data = delivery.resume_draft(message, Path(workspace.name))
-        return cls(data, on_finish, app, old_draft=old_draft, workspace=workspace)
+        return cls(data, on_finish, config, old_draft=old_draft, workspace=workspace)
 
     def _finish(self, notice: str) -> None:
         self.on_finish(notice)
 
-    def run(self, screen: curses.window) -> ChangeView:
-        app = self.app
+    def run(self, context: ui.UIContext) -> ChangeView:
+        screen = context.screen
+        config = self.config
         data = self.data
         edited = False
         errors: list[str] | None = None
@@ -65,7 +64,7 @@ class ComposeView:
                 curses.def_prog_mode()
                 curses.endwin()
                 try:
-                    data, changed = compose.edit(app.config, data, errors)
+                    data, changed = compose.edit(config, data, errors)
                 finally:
                     curses.reset_prog_mode()
                     screen.refresh()
@@ -79,15 +78,13 @@ class ComposeView:
                         'Compose invalid: edit, draft, discard',
                         {'e': 'edit', 'd': 'draft', 'x': 'discard'},
                         primary='edit',
-                        theme=app.theme,
-                    ).run(screen)
+                    ).run(context)
                 else:
                     action = ChooseView(
                         'Compose: send, edit, draft, discard',
                         {'s': 'send', 'e': 'edit', 'd': 'draft', 'x': 'discard'},
                         primary='send',
-                        theme=app.theme,
-                    ).run(screen)
+                    ).run(context)
                 if action == 'edit':
                     continue
                 if action in (None, 'discard'):
@@ -95,11 +92,11 @@ class ComposeView:
                     return ChangeView.close()
                 try:
                     if action == 'draft':
-                        delivery.save_draft(data, app.config)
+                        delivery.save_draft(data, config)
                         notice = 'draft saved'
                     else:
-                        ui.status(screen, 'Sending...', app.theme.status)
-                        delivery.send(data, app.config)
+                        ui.status(screen, 'Sending...', context.theme.status)
+                        delivery.send(data, config)
                         notice = 'message sent'
                         if self.replied_key and self.replied_state and self.replied_index:
                             try:
@@ -112,18 +109,17 @@ class ComposeView:
                     self._finish(notice)
                     return ChangeView.close()
                 except (OSError, delivery.DeliveryError) as exc:
-                    PagerView('Delivery failed', str(exc), app.theme).run(screen)
+                    PagerView('Delivery failed', str(exc)).run(context)
                     retry = ChooseView(
                         'Delivery failed: edit, draft, discard',
                         {'e': 'edit', 'd': 'draft', 'x': 'discard'},
                         primary='edit',
-                        theme=app.theme,
-                    ).run(screen)
+                    ).run(context)
                     if retry == 'edit':
                         continue
                     if retry == 'draft':
                         try:
-                            delivery.save_draft(data, app.config)
+                            delivery.save_draft(data, config)
                             if self.old_draft:
                                 self.old_draft.unlink(missing_ok=True)
                             self._finish('draft saved')

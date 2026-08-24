@@ -14,17 +14,12 @@ from .views.pager import PagerView
 
 
 class App:
-    def __init__(self, screen: curses.window, config: Config, theme: ui.CursesTheme):
-        self.screen = screen
+    def __init__(self, context: ui.UIContext, config: Config):
+        self.context = context
         self.config = config
-        self.theme = theme
         self.maildirs: dict[Path, MaildirState] = {}
         self.mime = MimeManager(config)
         self.stack: list[View[ChangeView]] = []
-        self.histories: dict[str, list[str]] = {}
-
-    def history(self, name: str) -> list[str]:
-        return self.histories.setdefault(name, [])
 
     def maildir_view(self, path: Path) -> IndexView:
         key = path.resolve()
@@ -33,7 +28,13 @@ class App:
         if state is None:
             state = MaildirState.open(path)
             self.maildirs[key] = state
-        return IndexView(state, self, reconcile=reconcile)
+        return IndexView(
+            state,
+            self.config,
+            self.mime,
+            self.maildir_view,
+            reconcile=reconcile,
+        )
 
     def open_maildir(self, path: Path) -> None:
         self.stack.append(self.maildir_view(path))
@@ -46,23 +47,25 @@ class App:
             f'Move {count} deleted message(s) to Trash?',
             {'y': 'yes', 'n': 'no'},
             primary='yes',
-            theme=self.theme,
-        ).run(self.screen)
+        ).run(self.context)
         if selected != 'yes':
             return True
         errors = [error for state in self.maildirs.values() for error in state.purge_deleted(self.config.trash)]
         if errors:
-            PagerView('Cannot move deleted messages', '\n'.join(errors), self.theme).run(self.screen)
+            PagerView('Cannot move deleted messages', '\n'.join(errors)).run(self.context)
             return False
         return True
 
     def run(self) -> None:
-        self.screen.keypad(True)
+        screen = self.context.screen
+        screen.keypad(True)
         curses.curs_set(0)
         try:
             while self.stack:
                 self.mime.reap()
-                transition = self.stack[-1].run(self.screen)
+                transition = self.stack[-1].run(self.context)
+                if transition.operation == 'close' and len(self.stack) == 1 and not self.confirm_exit():
+                    continue
                 transition.apply(self.stack)
         finally:
             for state in self.maildirs.values():

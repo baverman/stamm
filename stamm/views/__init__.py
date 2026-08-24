@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import curses
 from abc import abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import ClassVar, Literal, Protocol, Self, cast
 
-from .. import keys
+from .. import keys, ui
 from ..keys import ActionSet, Bindings
 
 GLOBAL_ACTIONS: ActionSet = {
@@ -61,7 +60,7 @@ class ChangeView:
 
 
 class View[T](Protocol):
-    def run(self, screen: curses.window) -> T: ...
+    def run(self, context: ui.UIContext) -> T: ...
 
 
 class ActionView[T](View[T], Protocol):
@@ -78,20 +77,20 @@ class HandlerView[T](ActionView[T]):
             raise TypeError(f'{cls.__name__} is missing action handlers: {", ".join(missing)}')
 
     @abstractmethod
-    def draw(self, screen: curses.window) -> None: ...
+    def draw(self, context: ui.UIContext) -> None: ...
 
-    def run(self, screen: curses.window) -> T:
+    def run(self, context: ui.UIContext) -> T:
         while True:
-            self.draw(screen)
-            action, _ch = keys.read(screen, self.compiled_actions)
+            self.draw(context)
+            action, _ch = keys.read(context.screen, self.compiled_actions)
             if action is None:
                 continue
-            handler = cast(Callable[[curses.window], T | None], getattr(self, f'on_{action}'))
-            result = handler(screen)
+            handler = cast(Callable[[ui.UIContext], T | None], getattr(self, f'on_{action}'))
+            result = handler(context)
             if result is not None:
                 return result
 
 
 class ChangeViewHandlerMixin:
-    def on_back(self, screen: curses.window) -> ChangeView | None:
+    def on_back(self, context: ui.UIContext) -> ChangeView | None:
         return ChangeView.close()

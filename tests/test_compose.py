@@ -10,7 +10,6 @@ import pytest
 
 import stamm.views.compose as compose_view_module
 from stamm import compose, delivery, ui
-from stamm.app import App
 from stamm.compose import ComposeData
 from stamm.config import Config
 from stamm.config_model import DEFAULT_COLORS, HooksConfig
@@ -109,19 +108,16 @@ def test_successful_reply_sets_maildir_replied_flag(config: Config, monkeypatch:
     screen = SimpleNamespace(refresh=lambda: None)
     notices: list[str] = []
     statuses: list[str] = []
-    app = object.__new__(App)
-    app.config = config
-    app.screen = screen
-    app.theme = SimpleNamespace(status=0, header=0)
+    theme = SimpleNamespace(status=0, header=0)
     view = ComposeView(
         data,
         notices.append,
-        app,
+        config,
         replied_state=state,  # type: ignore[arg-type]
         replied_index=state,  # type: ignore[arg-type]
         replied_key='message-key',
     )
-    app.stack = [view]
+    context = ui.UIContext(screen, theme)  # type: ignore[arg-type]
 
     monkeypatch.setattr(compose_view_module.curses, 'def_prog_mode', lambda: None)
     monkeypatch.setattr(compose_view_module.curses, 'endwin', lambda: None)
@@ -131,7 +127,7 @@ def test_successful_reply_sets_maildir_replied_flag(config: Config, monkeypatch:
     monkeypatch.setattr(ui, 'status', lambda _screen, text, _attr: statuses.append(text))
     monkeypatch.setattr(delivery, 'send', lambda *_args: Path('/tmp/sent'))
 
-    view.run(screen)
+    view.run(context)
 
     assert calls == [('message-key', 'R')]
     assert reloaded == [True]

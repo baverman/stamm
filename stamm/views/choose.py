@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import curses
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import ClassVar
@@ -20,12 +19,12 @@ class ChooseView:
     prompt: str
     choices: Mapping[str, str]
     primary: str
-    theme: ui.CursesTheme
 
-    def run(self, screen: curses.window) -> str | None:
+    def run(self, context: ui.UIContext) -> str | None:
         if self.primary not in self.choices.values():
             raise ValueError('primary item must be a choice')
-        ui.status(screen, f'{self.prompt} [{"/".join(self.choices)}]', self.theme.status)
+        screen = context.screen
+        ui.status(screen, f'{self.prompt} [{"/".join(self.choices)}]', context.theme.status)
         while True:
             action, ch = keys.read(screen, self.compiled_actions)
             if action == 'accept':
