@@ -30,23 +30,17 @@ def test_enter_and_backspace_expand_terminal_variants() -> None:
 
 
 def test_compile_merges_unbinds_and_collects_all_diagnostics() -> None:
-    registry = {
-        'view': keys.BindingDefinition(frozenset({'up', 'down'}), {'j': 'down', 'k': 'up', '^D': 'down'}),
-    }
     bindings, diagnostics = keys.compile_bindings(
-        registry,
-        {
-            'view': {'j': '', '^N': 'down', '^n': 'up', 'missing': 'down', 'x': 'unknown'},
-            'other': {'q': 'back'},
-        },
+        'view',
+        {'up': ('k',), 'down': ('j', '^D')},
+        {'j': '', '^N': 'down', '^n': 'up', 'missing': 'down', 'x': 'unknown'},
     )
 
-    assert bindings['view'] == {'k': 'up', '\x04': 'down', '\x0e': 'up'}
-    assert len(diagnostics) == 4
+    assert bindings == {'k': 'up', '\x04': 'down', '\x0e': 'up'}
+    assert len(diagnostics) == 3
     assert any('overlaps' in diagnostic for diagnostic in diagnostics)
     assert any('invalid or unavailable' in diagnostic for diagnostic in diagnostics)
     assert any('unknown action' in diagnostic for diagnostic in diagnostics)
-    assert any('unknown namespace' in diagnostic for diagnostic in diagnostics)
 
 
 def test_resolve_returns_none_for_unbound_event() -> None:

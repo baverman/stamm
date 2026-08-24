@@ -51,9 +51,9 @@ def test_reconcile_paints_index_before_scanning(monkeypatch: pytest.MonkeyPatch)
             events.append('refresh')
 
     state = State([], 0, 0, Path('.'), cast(Any, None), set())
-    view = IndexView(state, reconcile=True)
     app = object.__new__(App)
     app.screen = cast(Any, Screen())
+    view = IndexView(state, app, reconcile=True)
     monkeypatch.setattr(view, 'draw', lambda _app: events.append(f'draw:{view.notice}'))
 
     view._reconcile(app)

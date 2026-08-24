@@ -2,17 +2,10 @@ from __future__ import annotations
 
 import curses
 from collections.abc import Mapping
-from dataclasses import dataclass
 
 Key = str | int
 Bindings = dict[Key, str]
-BindingSpecs = dict[str, str]
-
-
-@dataclass(frozen=True, slots=True)
-class BindingDefinition:
-    actions: frozenset[str]
-    defaults: Mapping[str, str]
+ActionSet = dict[str, tuple[str, ...]]
 
 
 def _named_keys() -> dict[str, tuple[Key, ...]]:
@@ -59,52 +52,47 @@ def parse_key(specification: str) -> tuple[Key, ...]:
 
 
 def compile_bindings(
-    registry: Mapping[str, BindingDefinition], overrides: Mapping[str, Mapping[str, str]]
-) -> tuple[dict[str, Bindings], list[str]]:
-    effective: dict[str, Bindings] = {}
+    namespace: str, actions: Mapping[str, tuple[str, ...]], overrides: Mapping[str, str]
+) -> tuple[Bindings, list[str]]:
     diagnostics: list[str] = []
+    defaults = {specification: action for action, specifications in actions.items() for specification in specifications}
+    configured: dict[str, tuple[str, tuple[Key, ...]]] = {}
+    seen: dict[Key, str] = {}
 
-    for namespace in overrides.keys() - registry.keys():
-        diagnostics.append(f'keys.{namespace}: unknown namespace')
+    for source_key, action in overrides.items():
+        try:
+            values = parse_key(source_key)
+        except ValueError as exc:
+            diagnostics.append(f'keys.{namespace}.{source_key} = {action!r}: {exc}')
+            continue
+        if action and action not in actions:
+            diagnostics.append(f'keys.{namespace}.{source_key} = {action!r}: unknown action')
+            continue
+        previous = {seen[value] for value in values if value in seen and seen[value] != source_key}
+        if previous:
+            sources = ', '.join(repr(value) for value in sorted(previous))
+            diagnostics.append(f'keys.{namespace}.{source_key} = {action!r}: overlaps configured key {sources}')
+        for value in values:
+            seen[value] = source_key
+        configured[source_key] = (action, values)
 
-    for namespace, definition in registry.items():
-        configured: dict[str, tuple[str, tuple[Key, ...]]] = {}
-        seen: dict[Key, str] = {}
-        for source_key, action in overrides.get(namespace, {}).items():
-            try:
-                values = parse_key(source_key)
-            except ValueError as exc:
-                diagnostics.append(f'keys.{namespace}.{source_key} = {action!r}: {exc}')
-                continue
-            if action and action not in definition.actions:
-                diagnostics.append(f'keys.{namespace}.{source_key} = {action!r}: unknown action')
-                continue
-            previous = {seen[value] for value in values if value in seen and seen[value] != source_key}
-            if previous:
-                sources = ', '.join(repr(value) for value in sorted(previous))
-                diagnostics.append(f'keys.{namespace}.{source_key} = {action!r}: overlaps configured key {sources}')
-            for value in values:
-                seen[value] = source_key
-            configured[source_key] = (action, values)
+    configured_keys = configured.keys()
+    merged = [
+        (source_key, action, parse_key(source_key))
+        for source_key, action in defaults.items()
+        if source_key not in configured_keys
+    ]
+    merged.extend((source_key, action, values) for source_key, (action, values) in configured.items())
 
-        configured_keys = configured.keys()
-        merged = [
-            (source_key, action, parse_key(source_key))
-            for source_key, action in definition.defaults.items()
-            if source_key not in configured_keys
-        ]
-        merged.extend((source_key, action, values) for source_key, (action, values) in configured.items())
+    bindings: Bindings = {}
+    for _source_key, action, values in merged:
+        for value in values:
+            if action:
+                bindings[value] = action
+            else:
+                bindings.pop(value, None)
 
-        bindings: Bindings = {}
-        for _source_key, action, values in merged:
-            for value in values:
-                if action:
-                    bindings[value] = action
-                else:
-                    bindings.pop(value, None)
-        effective[namespace] = bindings
-
-    return effective, diagnostics
+    return bindings, diagnostics
 
 
 def resolve(bindings: Mapping[Key, str], ch: Key) -> str | None:

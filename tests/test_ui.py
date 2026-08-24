@@ -8,6 +8,7 @@ import pytest
 
 from stamm import keys, ui
 from stamm.ui import format_index_date, format_sender, viewport_start, wrap_text
+from stamm.views.choose import ChooseView
 
 
 def test_recent_date_uses_time() -> None:
@@ -93,20 +94,17 @@ def test_choose_maps_generic_and_explicit_keys(
     key: str | int, expected: str | None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(ui, 'status', lambda *_args: None)
-    compiled, diagnostics = keys.compile_bindings(
-        {'choose': keys.BindingDefinition(ui.CHOOSE_ACTIONS, ui.CHOOSE_DEFAULT_BINDINGS)}, {}
-    )
+    ChooseView.compiled_actions, diagnostics = keys.compile_bindings(ChooseView.namespace, ChooseView.actions, {})
     assert not diagnostics
+    theme = ui.CursesTheme(0, 0, 0, 0, 0, 0, 0, 0)
 
     assert (
-        ui.choose(
-            _ChoiceWindow(key),  # type: ignore[arg-type]
+        ChooseView(
             'Compose',
             {'s': 'send', 'e': 'edit', 'd': 'draft', 'x': 'discard'},
-            0,
-            compiled['choose'],
             primary='send',
-        )
+            theme=theme,
+        ).run(_ChoiceWindow(key))  # type: ignore[arg-type]
         == expected
     )
 

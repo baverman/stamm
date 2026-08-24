@@ -78,8 +78,8 @@ def test_mark_keeps_message_until_purge(tmp_path: Path) -> None:
     state.refresh()
     app = App(object(), config, ui.CursesTheme(0, 0, 0, 0, 0, 0, 0, 0))  # type: ignore[arg-type]
     app.maildirs[inbox.resolve()] = state
-    view = IndexView(state)
-    app.push(view)
+    view = IndexView(state, app)
+    app.stack.append(view)
     try:
         key = state.rows[0].message.key
 

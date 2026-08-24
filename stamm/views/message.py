@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import curses
 from dataclasses import dataclass, field
 from email.message import EmailMessage
 from typing import TYPE_CHECKING, ClassVar
 
-from .. import compose, keys, ui
+from .. import compose, keys
 from ..index import IndexedMessage
 from ..message import header_block, parse_message, select_body
 from ..state import IndexState, MaildirState
+from . import GLOBAL_ACTIONS, MAIL_ACTIONS, ChangeView
 from .compose import ComposeView
+from .pager import PagerView
 
 if TYPE_CHECKING:
     from ..app import App
@@ -16,17 +19,13 @@ if TYPE_CHECKING:
 
 @dataclass
 class MessageView:
-    ACTIONS: ClassVar[frozenset[str]] = frozenset({'back', 'parts', 'reply', 'reply_all', 'forward'})
-    DEFAULT_BINDINGS: ClassVar[keys.BindingSpecs] = {
-        'q': 'back',
-        'v': 'parts',
-        'r': 'reply',
-        'g': 'reply_all',
-        'f': 'forward',
-    }
+    namespace: ClassVar[str] = 'message'
+    actions: ClassVar[keys.ActionSet] = GLOBAL_ACTIONS | MAIL_ACTIONS
+    compiled_actions: ClassVar[keys.Bindings] = {}
     maildir: MaildirState
     index_state: IndexState
     item: IndexedMessage
+    app: App
     message: EmailMessage | None = field(default=None, init=False)
     body: str = field(default='', init=False)
     notice: str = field(default='', init=False)
@@ -50,7 +49,8 @@ class MessageView:
     def _set_notice(self, notice: str) -> None:
         self.notice = notice
 
-    def run(self, app: App) -> None:
+    def run(self, screen: curses.window) -> ChangeView | None:
+        app = self.app
         if self.message is None:
             self._open(app)
         assert self.message is not None
@@ -59,38 +59,35 @@ class MessageView:
             if self.notice:
                 text += f'\n\n[{self.notice}]'
                 self.notice = ''
-            ch = ui.pager(app.screen, self.item.subject, text, app.theme.header, app.bindings['pager'])
-            action = keys.resolve(app.bindings['message'], ch)
+            pressed = PagerView(self.item.subject, text, app.theme).run(screen)
+            action = keys.resolve(self.compiled_actions, pressed)
             if action == 'back':
-                app.pop()
-                return
+                return None
             if action == 'parts':
                 from .parts import PartsView
 
-                app.push(PartsView(self.message))
-                return
+                return ChangeView.push(PartsView(self.message, app))
             if action == 'reply':
-                app.push(
+                return ChangeView.push(
                     ComposeView(
                         compose.reply(self.message, self.body, app.config),
                         self._set_notice,
+                        app,
                         replied_state=self.maildir,
                         replied_index=self.index_state,
                         replied_key=self.item.key,
                     )
                 )
-                return
             if action == 'reply_all':
-                app.push(
+                return ChangeView.push(
                     ComposeView(
                         compose.reply(self.message, self.body, app.config, all_recipients=True),
                         self._set_notice,
+                        app,
                         replied_state=self.maildir,
                         replied_index=self.index_state,
                         replied_key=self.item.key,
                     )
                 )
-                return
             if action == 'forward':
-                app.push(ComposeView.forward(self.message, self.body, app, self._set_notice))
-                return
+                return ChangeView.push(ComposeView.forward(self.message, self.body, app, self._set_notice))

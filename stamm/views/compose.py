@@ -9,6 +9,9 @@ from typing import TYPE_CHECKING, Callable
 
 from .. import compose, delivery, ui
 from ..state import IndexState, MaildirState
+from . import ChangeView
+from .choose import ChooseView
+from .pager import PagerView
 
 if TYPE_CHECKING:
     from ..app import App
@@ -18,6 +21,7 @@ if TYPE_CHECKING:
 class ComposeView:
     data: compose.ComposeData
     on_finish: Callable[[str], None]
+    app: App
     old_draft: Path | None = None
     replied_state: MaildirState | None = None
     replied_index: IndexState | None = None
@@ -34,24 +38,25 @@ class ComposeView:
     ) -> ComposeView:
         workspace = tempfile.TemporaryDirectory(prefix='stamm-forward-')
         data = compose.forward(message, rendered_body, app.config, Path(workspace.name))
-        return cls(data, on_finish, workspace=workspace)
+        return cls(data, on_finish, app, workspace=workspace)
 
     @classmethod
     def resume(
         cls,
         message: EmailMessage,
         old_draft: Path,
+        app: App,
         on_finish: Callable[[str], None],
     ) -> ComposeView:
         workspace = tempfile.TemporaryDirectory(prefix='stamm-draft-')
         data = delivery.resume_draft(message, Path(workspace.name))
-        return cls(data, on_finish, old_draft=old_draft, workspace=workspace)
+        return cls(data, on_finish, app, old_draft=old_draft, workspace=workspace)
 
-    def _finish(self, app: App, notice: str) -> None:
-        app.pop()
+    def _finish(self, notice: str) -> None:
         self.on_finish(notice)
 
-    def run(self, app: App) -> None:
+    def run(self, screen: curses.window) -> ChangeView | None:
+        app = self.app
         data = self.data
         edited = False
         errors: list[str] | None = None
@@ -63,41 +68,37 @@ class ComposeView:
                     data, changed = compose.edit(app.config, data, errors)
                 finally:
                     curses.reset_prog_mode()
-                    app.screen.refresh()
+                    screen.refresh()
                 if not changed and not edited:
-                    self._finish(app, '')
-                    return
+                    self._finish('')
+                    return None
                 edited = edited or changed
                 errors = compose.validate(data)
                 if errors:
-                    action = ui.choose(
-                        app.screen,
+                    action = ChooseView(
                         'Compose invalid: edit, draft, discard',
                         {'e': 'edit', 'd': 'draft', 'x': 'discard'},
-                        app.theme.status,
-                        app.bindings['choose'],
                         primary='edit',
-                    )
+                        theme=app.theme,
+                    ).run(screen)
                 else:
-                    action = ui.choose(
-                        app.screen,
+                    action = ChooseView(
                         'Compose: send, edit, draft, discard',
                         {'s': 'send', 'e': 'edit', 'd': 'draft', 'x': 'discard'},
-                        app.theme.status,
-                        app.bindings['choose'],
                         primary='send',
-                    )
+                        theme=app.theme,
+                    ).run(screen)
                 if action == 'edit':
                     continue
                 if action in (None, 'discard'):
-                    self._finish(app, '')
-                    return
+                    self._finish('')
+                    return None
                 try:
                     if action == 'draft':
                         delivery.save_draft(data, app.config)
                         notice = 'draft saved'
                     else:
-                        ui.status(app.screen, 'Sending...', app.theme.status)
+                        ui.status(screen, 'Sending...', app.theme.status)
                         delivery.send(data, app.config)
                         notice = 'message sent'
                         if self.replied_key and self.replied_state and self.replied_index:
@@ -108,18 +109,16 @@ class ComposeView:
                                 notice = f'message sent; cannot mark replied: {flag_exc}'
                     if self.old_draft:
                         self.old_draft.unlink(missing_ok=True)
-                    self._finish(app, notice)
-                    return
+                    self._finish(notice)
+                    return None
                 except (OSError, delivery.DeliveryError) as exc:
-                    ui.pager(app.screen, 'Delivery failed', str(exc), app.theme.header, app.bindings['pager'])
-                    retry = ui.choose(
-                        app.screen,
+                    PagerView('Delivery failed', str(exc), app.theme).run(screen)
+                    retry = ChooseView(
                         'Delivery failed: edit, draft, discard',
                         {'e': 'edit', 'd': 'draft', 'x': 'discard'},
-                        app.theme.status,
-                        app.bindings['choose'],
                         primary='edit',
-                    )
+                        theme=app.theme,
+                    ).run(screen)
                     if retry == 'edit':
                         continue
                     if retry == 'draft':
@@ -127,12 +126,12 @@ class ComposeView:
                             delivery.save_draft(data, app.config)
                             if self.old_draft:
                                 self.old_draft.unlink(missing_ok=True)
-                            self._finish(app, 'draft saved')
+                            self._finish('draft saved')
                         except OSError as draft_exc:
-                            self._finish(app, str(draft_exc))
-                        return
-                    self._finish(app, str(exc))
-                    return
+                            self._finish(str(draft_exc))
+                        return None
+                    self._finish(str(exc))
+                    return None
         finally:
             if self.workspace:
                 self.workspace.cleanup()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import curses
 from dataclasses import dataclass, field
 from email.message import EmailMessage
 from pathlib import Path
@@ -7,6 +8,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 from .. import keys, ui
 from ..mime import PartRow, part_rows, save_part
+from . import GLOBAL_ACTIONS, MOVE_ACTIONS, ChangeView
 
 if TYPE_CHECKING:
     from ..app import App
@@ -14,17 +16,11 @@ if TYPE_CHECKING:
 
 @dataclass
 class PartsView:
-    ACTIONS: ClassVar[frozenset[str]] = frozenset({'up', 'down', 'open', 'save', 'back'})
-    DEFAULT_BINDINGS: ClassVar[keys.BindingSpecs] = {
-        'q': 'back',
-        'j': 'down',
-        'DOWN': 'down',
-        'k': 'up',
-        'UP': 'up',
-        'ENTER': 'open',
-        's': 'save',
-    }
+    namespace: ClassVar[str] = 'parts'
+    actions: ClassVar[keys.ActionSet] = GLOBAL_ACTIONS | MOVE_ACTIONS | {'open': ('ENTER',), 'save': ('s',)}
+    compiled_actions: ClassVar[keys.Bindings] = {}
     message: EmailMessage
+    app: App
     rows: list[PartRow] = field(init=False)
     selected: int = 0
     notice: str = ''
@@ -45,13 +41,13 @@ class PartsView:
         ui.status(screen, self.notice, app.theme.status)
         self.notice = ''
 
-    def run(self, app: App) -> None:
+    def run(self, screen: curses.window) -> ChangeView | None:
+        app = self.app
         while True:
             self.draw(app)
-            action, _ch = keys.read(app.screen, app.bindings['parts'])
+            action, _ch = keys.read(screen, self.compiled_actions)
             if action == 'back':
-                app.pop()
-                return
+                return None
             if action == 'down':
                 self.selected = min(len(self.rows) - 1, self.selected + 1)
             elif action == 'up':
