@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import curses
+import logging
+import os
 import sys
 from pathlib import Path
 
@@ -17,7 +19,23 @@ from .views.pager import PagerView
 from .views.parts import PartsView
 
 
+def configure_logging() -> None:
+    try:
+        state_home = Path(os.environ.get('XDG_STATE_HOME') or Path.home() / '.local' / 'state')
+        directory = state_home / 'stamm'
+        directory.mkdir(parents=True, exist_ok=True)
+        logging.basicConfig(
+            filename=directory / 'stamm.log',
+            level=logging.WARNING,
+            format='%(asctime)s %(levelname)s %(name)s: %(message)s',
+            encoding='utf-8',
+        )
+    except Exception:
+        logging.basicConfig(handlers=[logging.NullHandler()])
+
+
 def main(argv: list[str] | None = None) -> int:
+    configure_logging()
     parser = argparse.ArgumentParser(prog='stamm', description='terminal Maildir client')
     parser.add_argument('maildir', nargs='?', type=Path)
     args = parser.parse_args(argv)

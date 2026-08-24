@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import mimetypes
 import shlex
 import subprocess
@@ -12,7 +13,10 @@ from pathlib import Path
 from typing import BinaryIO
 
 from .config import Config, MimeRule
+from .html_images import prepare_html_images
 from .message import payload_bytes, payload_text
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -122,13 +126,21 @@ class MimeManager:
             assert isinstance(result, subprocess.CompletedProcess)
             return result.stdout.decode('utf-8', errors='replace')
 
-    def open(self, part: Message) -> None:
+    def open(self, part: Message, message: Message | None = None) -> None:
         command = self.opener_command(part.get_content_type())
         directory = tempfile.TemporaryDirectory(prefix='stamm-open-')
         path = Path(directory.name) / safe_filename(part)
         output = Path(directory.name) / 'out'
         content = payload_bytes(part)
         path.write_bytes(content)
+        output.touch()
+        if part.get_content_type() == 'text/html' and message is not None:
+            try:
+                prepared = prepare_html_images(content, message, Path(directory.name))
+                path.write_bytes(prepared)
+                content = prepared
+            except Exception:
+                logger.exception('failed to prepare images for HTML')
         with output.open('wb') as out:
             process = self._run(command, content, path, detached=True, output=out)
         assert isinstance(process, subprocess.Popen)

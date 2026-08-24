@@ -48,7 +48,7 @@ class PartsView(ChangeViewHandlerMixin, HandlerView[ChangeView]):
         if part.is_multipart():
             return
         try:
-            self.mime.open(part)
+            self.mime.open(part, self.message)
             self.notice = 'opened externally'
         except Exception as exc:
             self.notice = str(exc)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import tempfile
+from email.message import EmailMessage
 from pathlib import Path
 
 from stamm.config import Config, MimeRule
@@ -55,3 +56,26 @@ def test_successful_opener_keeps_temporary_file_until_manager_closes() -> None:
 
     manager.close()
     assert not Path(directory.name).exists()
+
+
+def test_open_html_prepares_message_images() -> None:
+    manager = MimeManager(config((MimeRule('text/html', None, 'true {file}'),)))
+    message = EmailMessage()
+    message.make_related()
+    html = EmailMessage()
+    html.set_content('<img src="cid:logo@example.com">', subtype='html')
+    image = EmailMessage()
+    image.set_content(b'logo', maintype='image', subtype='png')
+    image.add_header('Content-Disposition', 'inline', filename='logo.png')
+    image['Content-ID'] = '<logo@example.com>'
+    message.attach(html)
+    message.attach(image)
+
+    manager.open(html, message)
+    entry = manager._temporary[-1]
+    entry.process.wait(timeout=5)
+    directory = Path(entry.directory.name)
+
+    assert (directory / 'logo.png').read_bytes() == b'logo'
+    assert b'src="logo.png"' in (directory / 'part.html').read_bytes()
+    manager.close()
