@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Callable
 
 from .. import compose, delivery, ui
-from ..config import Config
+from ..config import config
 from ..state import IndexState, MaildirState
 from . import ChangeView
 from .choose import ChooseView
@@ -19,7 +19,6 @@ from .pager import PagerView
 class ComposeView:
     data: compose.ComposeData
     on_finish: Callable[[str], None]
-    config: Config
     old_draft: Path | None = None
     replied_state: MaildirState | None = None
     replied_index: IndexState | None = None
@@ -31,31 +30,28 @@ class ComposeView:
         cls,
         message: EmailMessage,
         rendered_body: str,
-        config: Config,
         on_finish: Callable[[str], None],
     ) -> ComposeView:
         workspace = tempfile.TemporaryDirectory(prefix='stamm-forward-')
         data = compose.forward(message, rendered_body, config, Path(workspace.name))
-        return cls(data, on_finish, config, workspace=workspace)
+        return cls(data, on_finish, workspace=workspace)
 
     @classmethod
     def resume(
         cls,
         message: EmailMessage,
         old_draft: Path,
-        config: Config,
         on_finish: Callable[[str], None],
     ) -> ComposeView:
         workspace = tempfile.TemporaryDirectory(prefix='stamm-draft-')
         data = delivery.resume_draft(message, Path(workspace.name))
-        return cls(data, on_finish, config, old_draft=old_draft, workspace=workspace)
+        return cls(data, on_finish, old_draft=old_draft, workspace=workspace)
 
     def _finish(self, notice: str) -> None:
         self.on_finish(notice)
 
     def run(self, context: ui.UIContext) -> ChangeView:
         screen = context.screen
-        config = self.config
         data = self.data
         edited = False
         errors: list[str] | None = None

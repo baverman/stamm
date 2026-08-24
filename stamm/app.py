@@ -4,7 +4,7 @@ import curses
 from pathlib import Path
 
 from . import ui
-from .config import Config
+from .config import config
 from .mime import MimeManager
 from .state import MaildirState
 from .views import ChangeView, View
@@ -14,9 +14,8 @@ from .views.pager import PagerView
 
 
 class App:
-    def __init__(self, context: ui.UIContext, config: Config):
+    def __init__(self, context: ui.UIContext):
         self.context = context
-        self.config = config
         self.maildirs: dict[Path, MaildirState] = {}
         self.mime = MimeManager(config)
         self.stack: list[View[ChangeView]] = []
@@ -30,7 +29,6 @@ class App:
             self.maildirs[key] = state
         return IndexView(
             state,
-            self.config,
             self.mime,
             self.maildir_view,
             reconcile=reconcile,
@@ -50,7 +48,7 @@ class App:
         ).run(self.context)
         if selected != 'yes':
             return True
-        errors = [error for state in self.maildirs.values() for error in state.purge_deleted(self.config.trash)]
+        errors = [error for state in self.maildirs.values() for error in state.purge_deleted(config.trash)]
         if errors:
             PagerView('Cannot move deleted messages', '\n'.join(errors)).run(self.context)
             return False

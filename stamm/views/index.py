@@ -9,7 +9,7 @@ from string import Formatter
 from typing import TYPE_CHECKING, ClassVar
 
 from .. import compose, keys, ui
-from ..config import Config
+from ..config import config
 from ..message import parse_message, select_body
 from ..mime import MimeManager
 from ..search import parse_query
@@ -70,7 +70,6 @@ class IndexView(ChangeViewHandlerMixin, HandlerView[ChangeView]):
     )
     compiled_actions: ClassVar[keys.Bindings] = {}
     state: IndexState
-    config: Config
     mime: MimeManager
     open_maildir: Callable[[Path], IndexView]
     notice: str = ''
@@ -95,7 +94,7 @@ class IndexView(ChangeViewHandlerMixin, HandlerView[ChangeView]):
         deleted = self.maildir.pending_delete
         format_parts = [
             (literal, name, specification or '', conversion)
-            for literal, name, specification, conversion in Formatter().parse(self.config.index.format)
+            for literal, name, specification, conversion in Formatter().parse(config.index.format)
         ]
         fixed_width = sum(
             ui.text_width(literal) + (0 if name is None or specification == '*' else int(specification))
@@ -148,7 +147,7 @@ class IndexView(ChangeViewHandlerMixin, HandlerView[ChangeView]):
         return parse_message(self.maildir.path / self.state.selected_message.path)
 
     def _render_body(self, message: EmailMessage) -> str:
-        part = select_body(message, self.config)
+        part = select_body(message, config)
         if part is None:
             return '[No displayable body. Press v to inspect MIME parts.]'
         try:
@@ -173,7 +172,6 @@ class IndexView(ChangeViewHandlerMixin, HandlerView[ChangeView]):
             return None
         view = IndexView(
             SearchState.create(self.maildir, query, terms),
-            self.config,
             self.mime,
             self.open_maildir,
         )
@@ -185,7 +183,7 @@ class IndexView(ChangeViewHandlerMixin, HandlerView[ChangeView]):
         value = ui.prompt(
             context.screen,
             'Maildir: ',
-            str(self.config.root) + '/',
+            str(config.root) + '/',
             complete_paths=True,
             completer=ui.maildir_completer,
             history=MAILDIR_HISTORY,
@@ -200,7 +198,7 @@ class IndexView(ChangeViewHandlerMixin, HandlerView[ChangeView]):
             return None
 
     def _mark_deleted(self) -> None:
-        if self.maildir.path.resolve() == self.config.trash.resolve():
+        if self.maildir.path.resolve() == config.trash.resolve():
             self.notice = 'messages in Trash cannot be marked for deletion'
             return
         self.maildir.mark_deleted(self.state.selected_message.key)
@@ -208,7 +206,7 @@ class IndexView(ChangeViewHandlerMixin, HandlerView[ChangeView]):
         self.notice = 'marked for deletion'
 
     def _manual_refresh(self, context: ui.UIContext) -> None:
-        if hook := self.config.hooks.pre_refresh:
+        if hook := config.hooks.pre_refresh:
             try:
                 command = [argument.replace('{maildir}', str(self.maildir.path)) for argument in shlex.split(hook)]
                 if not command:
@@ -237,11 +235,11 @@ class IndexView(ChangeViewHandlerMixin, HandlerView[ChangeView]):
             self.state.reload()
 
     def _resume(self) -> ComposeView | None:
-        if self.maildir.path.resolve() != self.config.drafts.resolve() or not self.state.rows:
+        if self.maildir.path.resolve() != config.drafts.resolve() or not self.state.rows:
             self.notice = 'resume is available only in the Drafts Maildir'
             return None
         old_path = self.maildir.path / self.state.selected_message.path
-        return ComposeView.resume(self._message(), old_path, self.config, self._resume_finished)
+        return ComposeView.resume(self._message(), old_path, self._resume_finished)
 
     def _reconcile(self, context: ui.UIContext) -> None:
         self.notice = 'reconciling...' if self.state.rows else 'indexing...'
@@ -296,7 +294,6 @@ class IndexView(ChangeViewHandlerMixin, HandlerView[ChangeView]):
                 self.maildir,
                 self.state,
                 self.state.selected_message,
-                self.config,
                 self.mime,
             )
         )
@@ -322,7 +319,7 @@ class IndexView(ChangeViewHandlerMixin, HandlerView[ChangeView]):
         return ChangeView.push(view) if view is not None else None
 
     def on_compose(self, context: ui.UIContext) -> ChangeView:
-        return ChangeView.push(ComposeView(compose.new(self.config), self._set_notice, self.config))
+        return ChangeView.push(ComposeView(compose.new(config), self._set_notice))
 
     def on_parts(self, context: ui.UIContext) -> ChangeView | None:
         if not self.state.rows:
@@ -340,11 +337,10 @@ class IndexView(ChangeViewHandlerMixin, HandlerView[ChangeView]):
                 compose.reply(
                     message,
                     self._render_body(message),
-                    self.config,
+                    config,
                     all_recipients=all_recipients,
                 ),
                 self._set_notice,
-                self.config,
                 replied_state=self.maildir,
                 replied_index=self.state,
                 replied_key=self.state.selected_message.key,
@@ -361,7 +357,7 @@ class IndexView(ChangeViewHandlerMixin, HandlerView[ChangeView]):
         if not self.state.rows:
             return None
         message = self._message()
-        return ChangeView.push(ComposeView.forward(message, self._render_body(message), self.config, self._set_notice))
+        return ChangeView.push(ComposeView.forward(message, self._render_body(message), self._set_notice))
 
     def on_delete(self, context: ui.UIContext) -> None:
         if self.state.rows:

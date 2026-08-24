@@ -11,7 +11,7 @@ import pytest
 import stamm.views.compose as compose_view_module
 from stamm import compose, delivery, ui
 from stamm.compose import ComposeData
-from stamm.config import Config
+from stamm.config import Config, set_config
 from stamm.config_model import DEFAULT_COLORS, HooksConfig
 from stamm.views.compose import ComposeView
 
@@ -109,10 +109,10 @@ def test_successful_reply_sets_maildir_replied_flag(config: Config, monkeypatch:
     notices: list[str] = []
     statuses: list[str] = []
     theme = SimpleNamespace(status=0, header=0)
+    set_config(config)
     view = ComposeView(
         data,
         notices.append,
-        config,
         replied_state=state,  # type: ignore[arg-type]
         replied_index=state,  # type: ignore[arg-type]
         replied_key='message-key',

@@ -10,7 +10,14 @@ from pathlib import Path
 from .config_model import Config, MimeRule
 from .schema import parse
 
-__all__ = ['Config', 'ConfigError', 'MimeRule', 'load_config']
+__all__ = ['Config', 'ConfigError', 'MimeRule', 'config', 'load_config', 'set_config']
+
+config: Config = object.__new__(Config)
+
+
+def set_config(value: Config) -> None:
+    vars(config).clear()
+    vars(config).update(vars(value))
 
 
 class ConfigError(ValueError):

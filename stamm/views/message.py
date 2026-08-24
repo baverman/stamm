@@ -5,7 +5,7 @@ from email.message import EmailMessage
 from typing import ClassVar
 
 from .. import compose, keys, ui
-from ..config import Config
+from ..config import config
 from ..index import IndexedMessage
 from ..message import header_block, parse_message, select_body
 from ..mime import MimeManager
@@ -23,7 +23,6 @@ class MessageView:
     maildir: MaildirState
     index_state: IndexState
     item: IndexedMessage
-    config: Config
     mime: MimeManager
     message: EmailMessage | None = field(default=None, init=False)
     body: str = field(default='', init=False)
@@ -36,7 +35,7 @@ class MessageView:
             if self.index_state is not self.maildir:
                 self.index_state.reload()
         self.message = parse_message(self.maildir.path / self.item.path)
-        part = select_body(self.message, self.config)
+        part = select_body(self.message, config)
         if part is None:
             self.body = '[No displayable body. Press v to inspect MIME parts.]'
             return
@@ -68,9 +67,8 @@ class MessageView:
             if action == 'reply':
                 return ChangeView.push(
                     ComposeView(
-                        compose.reply(self.message, self.body, self.config),
+                        compose.reply(self.message, self.body, config),
                         self._set_notice,
-                        self.config,
                         replied_state=self.maildir,
                         replied_index=self.index_state,
                         replied_key=self.item.key,
@@ -79,13 +77,12 @@ class MessageView:
             if action == 'reply_all':
                 return ChangeView.push(
                     ComposeView(
-                        compose.reply(self.message, self.body, self.config, all_recipients=True),
+                        compose.reply(self.message, self.body, config, all_recipients=True),
                         self._set_notice,
-                        self.config,
                         replied_state=self.maildir,
                         replied_index=self.index_state,
                         replied_key=self.item.key,
                     )
                 )
             if action == 'forward':
-                return ChangeView.push(ComposeView.forward(self.message, self.body, self.config, self._set_notice))
+                return ChangeView.push(ComposeView.forward(self.message, self.body, self._set_notice))

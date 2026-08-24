@@ -9,7 +9,7 @@ from pathlib import Path
 
 from . import keys, ui
 from .app import App
-from .config import ConfigError, load_config
+from .config import ConfigError, config, load_config, set_config
 from .views.choose import ChooseView
 from .views.index import IndexView
 from .views.message import MessageView
@@ -22,7 +22,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('maildir', nargs='?', type=Path)
     args = parser.parse_args(argv)
     try:
-        config = load_config()
+        set_config(load_config())
         diagnostics: list[str] = []
         views = (IndexView, MessageView, PartsView, PagerView, ChooseView)
 
@@ -50,7 +50,7 @@ def main(argv: list[str] | None = None) -> int:
                     'Key binding warnings',
                     '\n'.join(diagnostics) + '\n\nPress any unbound key to continue.',
                 ).run(context)
-            app = App(context, config)
+            app = App(context)
             app.open_maildir(selected)
             app.run()
 

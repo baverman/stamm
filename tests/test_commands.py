@@ -19,8 +19,8 @@ def test_command_completer_stops_at_arguments() -> None:
 def test_search_from_search_view_replaces_current_search() -> None:
     source = MaildirState([], 0, 0, Path('.'), cast(Any, None), set())
     dependency = cast(Any, None)
-    maildir_view = IndexView(source, dependency, dependency, dependency)
-    search_view = IndexView(SearchState.create(source, 'old', []), dependency, dependency, dependency)
+    maildir_view = IndexView(source, dependency, dependency)
+    search_view = IndexView(SearchState.create(source, 'old', []), dependency, dependency)
     stack = [maildir_view, search_view]
 
     change = search_view._search('search subject:new')
