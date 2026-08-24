@@ -108,6 +108,7 @@ def test_successful_reply_sets_maildir_replied_flag(config: Config, monkeypatch:
     state = SimpleNamespace(index=index, reload=lambda: reloaded.append(True))
     screen = SimpleNamespace(refresh=lambda: None)
     notices: list[str] = []
+    statuses: list[str] = []
     app = object.__new__(App)
     app.config = config
     app.screen = screen
@@ -127,6 +128,7 @@ def test_successful_reply_sets_maildir_replied_flag(config: Config, monkeypatch:
     monkeypatch.setattr(compose_view_module.curses, 'reset_prog_mode', lambda: None)
     monkeypatch.setattr(compose, 'edit', lambda *_args: (data, True))
     monkeypatch.setattr(ui, 'choose', lambda *_args, **_kwargs: 'send')
+    monkeypatch.setattr(ui, 'status', lambda _screen, text, _attr: statuses.append(text))
     monkeypatch.setattr(delivery, 'send', lambda *_args: Path('/tmp/sent'))
 
     view.run(app)
@@ -134,3 +136,4 @@ def test_successful_reply_sets_maildir_replied_flag(config: Config, monkeypatch:
     assert calls == [('message-key', 'R')]
     assert reloaded == [True]
     assert notices == ['message sent']
+    assert statuses == ['Sending...']

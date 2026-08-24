@@ -97,6 +97,7 @@ class ComposeView:
                         delivery.save_draft(data, app.config)
                         notice = 'draft saved'
                     else:
+                        ui.status(app.screen, 'Sending...', app.theme.status)
                         delivery.send(data, app.config)
                         notice = 'message sent'
                         if self.replied_key and self.replied_state and self.replied_index:
