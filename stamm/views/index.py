@@ -4,6 +4,7 @@ import shlex
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from string import Formatter
 from typing import TYPE_CHECKING, ClassVar
 
 from .. import compose, keys, ui
@@ -108,6 +109,21 @@ class IndexView:
         self.state.offset = ui.viewport_start(self.state.selected, len(self.state.rows), visible, self.state.offset)
         start = self.state.offset
         deleted = self.maildir.pending_delete
+        format_parts = [
+            (literal, name, specification or '', conversion)
+            for literal, name, specification, conversion in Formatter().parse(app.config.index.format)
+        ]
+        fixed_width = sum(
+            ui.text_width(literal) + (0 if name is None or specification == '*' else int(specification))
+            for literal, name, specification, _conversion in format_parts
+        )
+        flexible_width = max(0, width - fixed_width)
+        styles = {
+            'date': theme.index_date,
+            'flags': theme.index_flags,
+            'sender': theme.index_sender,
+            'subject': theme.index_subject,
+        }
         for y, row in enumerate(self.state.rows[start : start + visible], 1):
             item = row.message
             flags = ''.join(
@@ -118,17 +134,27 @@ class IndexView:
                     'F' if 'F' in item.flags else '',
                 )
             )[:3]
-            sender = ui.format_sender(item.sender)[:20]
-            subject = '  ' * row.depth + item.subject.replace('\n', ' ')
-            date = ui.format_index_date(item.timestamp)
-            line = f'{date} {flags:3} {sender:20}  {subject}'
+            values = {
+                'date': ui.format_index_date(item.timestamp),
+                'flags': flags,
+                'sender': ui.format_sender(item.sender),
+                'subject': '  ' * row.depth + item.subject.replace('\n', ' '),
+            }
             selected = start + y - 1 == self.state.selected
-            ui.put(screen, y, 0, line.ljust(width), width, theme.indicator if selected else 0)
-            if not selected:
-                ui.put(screen, y, 0, date, 12, theme.index_date)
-                ui.put(screen, y, 13, flags, 3, theme.index_flags)
-                ui.put(screen, y, 17, sender, 20, theme.index_sender)
-                ui.put(screen, y, 39, subject, max(0, width - 39), theme.index_subject)
+            selected_attr = theme.indicator if selected else 0
+            ui.put(screen, y, 0, ' ' * width, width, selected_attr)
+            x = 0
+            for literal, name, specification, _conversion in format_parts:
+                literal_width = ui.text_width(literal)
+                ui.put(screen, y, x, literal, min(literal_width, max(0, width - x)), selected_attr)
+                x += literal_width
+                if name is None:
+                    continue
+                column_width = flexible_width if specification == '*' else int(specification)
+                visible_width = min(column_width, max(0, width - x))
+                attr = selected_attr if selected else styles[name]
+                ui.put(screen, y, x, values[name].ljust(column_width), visible_width, attr)
+                x += column_width
         count = len(self.state.rows)
         summary = f' {count} {"message" if count == 1 else "messages"}'
         ui.status(screen, self.notice or summary, theme.status)

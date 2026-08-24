@@ -21,6 +21,8 @@ def test_nested_hooks_config_and_typed_defaults(tmp_path: Path) -> None:
                 'identities = ["sender@example.com"]',
                 '[hooks]',
                 'pre_refresh = "sync {maildir}"',
+                '[index]',
+                'format = "{sender:15} {subject:*}"',
                 '[keys.index]',
                 '"^N" = "down"',
             )
@@ -32,4 +34,5 @@ def test_nested_hooks_config_and_typed_defaults(tmp_path: Path) -> None:
 
     assert config.hooks.pre_refresh == 'sync {maildir}'
     assert config.colors == DEFAULT_COLORS
+    assert config.index.format == '{sender:15} {subject:*}'
     assert config.keys == {'index': {'^N': 'down'}}

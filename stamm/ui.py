@@ -253,7 +253,7 @@ def _character_width(character: str) -> int:
     return 2 if unicodedata.east_asian_width(character) in ('W', 'F') else 1
 
 
-def _text_width(value: str) -> int:
+def text_width(value: str) -> int:
     return sum(_character_width(character) for character in value)
 
 
@@ -276,7 +276,7 @@ def _input_view(value: str, cursor: int, columns: int) -> tuple[str, int]:
             break
         remaining -= width
         end += 1
-    return value[start:end], _text_width(value[start:cursor])
+    return value[start:end], text_width(value[start:cursor])
 
 
 def _path_completion_items(value: str, cursor: int, *, directories_only: bool = False) -> list[Completion]:
@@ -373,7 +373,7 @@ def prompt(
             put(window, y, 0, text.ljust(width), width, attr)
         popup_rows = rows
 
-        label_width = _text_width(label)
+        label_width = text_width(label)
         available = max(0, width - label_width)
         visible, cursor_column = _input_view(value, cursor, available)
         put(window, height - 1, 0, (label + visible).ljust(width), width, status_attr)

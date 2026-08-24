@@ -3,6 +3,16 @@
 A fast, mutt-like terminal client for Maildir folders. Stamm requires Python 3.12 or later and uses only the Python standard library at runtime.
 
 
+## Index format
+
+```toml
+[index]
+format = "{date:12} {flags:3} {sender:20}  {subject:*}"
+```
+
+Available fields are `date`, `flags`, `sender`, and `subject`. A numeric width is fixed; `*` uses the remaining width. Fields can be reordered or omitted.
+
+
 ## Key bindings
 
 Input bindings use namespaced TOML tables and the `key = action` format. Configured entries override defaults, while an empty action removes a default binding:

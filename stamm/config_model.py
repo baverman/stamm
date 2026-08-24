@@ -6,6 +6,7 @@ import fnmatch
 from dataclasses import dataclass
 from email.utils import getaddresses
 from pathlib import Path
+from string import Formatter
 from typing import Callable, TypeVar
 
 from .schema import Typ, as_kv, as_list, field, optfield
@@ -106,6 +107,44 @@ class HooksConfig:
 DEFAULT_HOOKS = HooksConfig(None)
 
 
+INDEX_FIELDS = frozenset({'date', 'flags', 'sender', 'subject'})
+
+
+def index_format(value: object) -> str:
+    value = str(value)
+    fields: list[str] = []
+    flexible = 0
+    try:
+        parts = Formatter().parse(value)
+        for _literal, name, specification, conversion in parts:
+            if name is None:
+                continue
+            specification = specification or ''
+            if name not in INDEX_FIELDS:
+                raise ValueError(f'unknown index field: {name}')
+            if name in fields:
+                raise ValueError(f'duplicate index field: {name}')
+            if conversion is not None:
+                raise ValueError('index fields do not support conversions')
+            if specification == '*':
+                flexible += 1
+            elif not specification.isdecimal() or int(specification) <= 0:
+                raise ValueError(f'invalid width for index field {name}: {specification}')
+            fields.append(name)
+    except ValueError as exc:
+        raise ValueError(f'invalid index format: {exc}') from exc
+    if not fields:
+        raise ValueError('invalid index format: must contain at least one field')
+    if flexible > 1:
+        raise ValueError('invalid index format: only one field can use * width')
+    return value
+
+
+@dataclass(frozen=True)
+class IndexConfig:
+    format: str = field(index_format, default='{date:12} {flags:3} {sender:25}  {subject:*}', required=False)
+
+
 @dataclass(frozen=True)
 class Config:
     root: Path = field(Path)
@@ -122,6 +161,7 @@ class Config:
     signatures: dict[str, Path] = field(as_kv(Path), default_factory=dict, required=False)
     mime: tuple[MimeRule, ...] = field(as_tuple(MimeRule), default=(), required=False)
     colors: ColorConfig = field(ColorConfig, default=DEFAULT_COLORS, required=False)
+    index: IndexConfig = field(IndexConfig, default=IndexConfig(), required=False)
     keys: dict[str, dict[str, str]] = field(as_kv(as_kv(str)), default_factory=dict, required=False)
 
     @property
