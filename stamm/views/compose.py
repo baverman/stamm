@@ -9,7 +9,6 @@ from typing import Callable
 
 from .. import compose, delivery, ui
 from ..config import config
-from ..state import IndexState, MaildirState
 from . import ChangeView
 from .choose import ChooseView
 from .pager import PagerView
@@ -18,11 +17,8 @@ from .pager import PagerView
 @dataclass
 class ComposeView:
     data: compose.ComposeData
-    on_finish: Callable[[str], None]
+    on_finish: Callable[[str, bool], None]
     old_draft: Path | None = None
-    replied_state: MaildirState | None = None
-    replied_index: IndexState | None = None
-    replied_key: str | None = None
     workspace: tempfile.TemporaryDirectory[str] | None = None
 
     @classmethod
@@ -30,7 +26,7 @@ class ComposeView:
         cls,
         message: EmailMessage,
         rendered_body: str,
-        on_finish: Callable[[str], None],
+        on_finish: Callable[[str, bool], None],
     ) -> ComposeView:
         workspace = tempfile.TemporaryDirectory(prefix='stamm-forward-')
         data = compose.forward(message, rendered_body, config, Path(workspace.name))
@@ -41,14 +37,14 @@ class ComposeView:
         cls,
         message: EmailMessage,
         old_draft: Path,
-        on_finish: Callable[[str], None],
+        on_finish: Callable[[str, bool], None],
     ) -> ComposeView:
         workspace = tempfile.TemporaryDirectory(prefix='stamm-draft-')
         data = delivery.resume_draft(message, Path(workspace.name))
         return cls(data, on_finish, old_draft=old_draft, workspace=workspace)
 
-    def _finish(self, notice: str) -> None:
-        self.on_finish(notice)
+    def _finish(self, notice: str, is_sent: bool) -> None:
+        self.on_finish(notice, is_sent)
 
     def run(self, context: ui.UIContext) -> ChangeView:
         screen = context.screen
@@ -65,7 +61,7 @@ class ComposeView:
                     curses.reset_prog_mode()
                     screen.refresh()
                 if not changed and not edited:
-                    self._finish('')
+                    self._finish('', False)
                     return ChangeView.close()
                 edited = edited or changed
                 errors = compose.validate(data)
@@ -84,8 +80,9 @@ class ComposeView:
                 if action == 'edit':
                     continue
                 if action in (None, 'discard'):
-                    self._finish('')
+                    self._finish('', False)
                     return ChangeView.close()
+                is_sent = False
                 try:
                     if action == 'draft':
                         delivery.save_draft(data, config)
@@ -93,16 +90,11 @@ class ComposeView:
                     else:
                         ui.status(screen, 'Sending...', context.theme.status)
                         delivery.send(data, config)
+                        is_sent = True
                         notice = 'message sent'
-                        if self.replied_key and self.replied_state and self.replied_index:
-                            try:
-                                self.replied_state.index.set_flags(self.replied_key, add='R')
-                                self.replied_index.reload()
-                            except (OSError, KeyError) as flag_exc:
-                                notice = f'message sent; cannot mark replied: {flag_exc}'
                     if self.old_draft:
                         self.old_draft.unlink(missing_ok=True)
-                    self._finish(notice)
+                    self._finish(notice, is_sent)
                     return ChangeView.close()
                 except (OSError, delivery.DeliveryError) as exc:
                     PagerView('Delivery failed', str(exc)).run(context)
@@ -118,11 +110,11 @@ class ComposeView:
                             delivery.save_draft(data, config)
                             if self.old_draft:
                                 self.old_draft.unlink(missing_ok=True)
-                            self._finish('draft saved')
+                            self._finish('draft saved', False)
                         except OSError as draft_exc:
-                            self._finish(str(draft_exc))
+                            self._finish(str(draft_exc), False)
                         return ChangeView.close()
-                    self._finish(str(exc))
+                    self._finish(str(exc), is_sent)
                     return ChangeView.close()
         finally:
             if self.workspace:

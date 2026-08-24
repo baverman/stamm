@@ -99,24 +99,14 @@ def test_forward_preserves_attachments_and_non_body_mime_parts(config: Config, t
     assert 'rendered body' in data.body
 
 
-def test_successful_reply_sets_maildir_replied_flag(config: Config, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_successful_send_reports_is_sent(config: Config, monkeypatch: pytest.MonkeyPatch) -> None:
     data = ComposeData(sender='sender@example.com', to='recipient@example.com')
-    calls: list[tuple[str, str]] = []
-    reloaded: list[bool] = []
-    index = SimpleNamespace(set_flags=lambda key, *, add: calls.append((key, add)))
-    state = SimpleNamespace(index=index, reload=lambda: reloaded.append(True))
     screen = SimpleNamespace(refresh=lambda: None)
-    notices: list[str] = []
+    finished: list[tuple[str, bool]] = []
     statuses: list[str] = []
     theme = SimpleNamespace(status=0, header=0)
     set_config(config)
-    view = ComposeView(
-        data,
-        notices.append,
-        replied_state=state,  # type: ignore[arg-type]
-        replied_index=state,  # type: ignore[arg-type]
-        replied_key='message-key',
-    )
+    view = ComposeView(data, lambda notice, is_sent: finished.append((notice, is_sent)))
     context = ui.UIContext(screen, theme)  # type: ignore[arg-type]
 
     monkeypatch.setattr(compose_view_module.curses, 'def_prog_mode', lambda: None)
@@ -129,7 +119,5 @@ def test_successful_reply_sets_maildir_replied_flag(config: Config, monkeypatch:
 
     view.run(context)
 
-    assert calls == [('message-key', 'R')]
-    assert reloaded == [True]
-    assert notices == ['message sent']
+    assert finished == [('message sent', True)]
     assert statuses == ['Sending...']

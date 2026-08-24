@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from dataclasses import dataclass, replace
 from datetime import datetime
@@ -94,7 +95,6 @@ class MessageIndex:
     def _ids(value: str | None) -> tuple[str, ...]:
         if not value:
             return ()
-        import re
 
         found = re.findall(r'<[^<>]+>', value)
         return tuple(found or value.split())

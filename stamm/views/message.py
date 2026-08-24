@@ -10,7 +10,7 @@ from ..message import header_block
 from . import GLOBAL_ACTIONS, MAIL_ACTIONS, ChangeView, DefaultActionView
 from .pager import PagerWidget
 
-MessageAction = Callable[[str, Callable[[str], None]], ChangeView]
+MessageAction = Callable[[str, Callable[[str, bool], None]], ChangeView]
 
 
 @dataclass
@@ -28,7 +28,7 @@ class MessageView(DefaultActionView):
     def __post_init__(self) -> None:
         self.pager = PagerWidget(self.message.get('Subject', ''), '')
 
-    def _set_notice(self, notice: str) -> None:
+    def _set_notice(self, notice: str, _is_sent: bool) -> None:
         self.notice = notice
 
     def draw(self, context: ui.UIContext) -> None:

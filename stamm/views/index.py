@@ -4,9 +4,10 @@ import shlex
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
+from email.message import EmailMessage
 from pathlib import Path
 from string import Formatter
-from typing import TYPE_CHECKING, ClassVar
+from typing import ClassVar
 
 from .. import compose, keys, ui
 from ..config import config
@@ -16,11 +17,9 @@ from ..search import parse_query
 from ..state import IndexState, MaildirState, SearchState
 from . import GLOBAL_ACTIONS, MAIL_ACTIONS, MOVE_ACTIONS, PAGE_ACTIONS, ChangeView, DefaultActionView
 from .compose import ComposeView
+from .message import MessageView
 from .pager import PagerView
-
-if TYPE_CHECKING:
-    from email.message import EmailMessage
-
+from .parts import PartsView
 
 COMMANDS = ('search',)
 COMMAND_HISTORY: list[str] = []
@@ -217,14 +216,29 @@ class IndexView(DefaultActionView):
         self.maildir.refresh()
         self.notice = 'refreshed'
 
-    def _set_notice(self, notice: str) -> None:
+    def _set_notice(self, notice: str, _is_sent: bool) -> None:
         self.notice = notice
 
-    def _resume_finished(self, notice: str) -> None:
+    def _resume_finished(self, notice: str, _is_sent: bool) -> None:
         self.notice = notice
         self.maildir.refresh()
         if self.state is not self.maildir:
             self.state.reload()
+
+    def _reply_finished(
+        self,
+        key: str,
+        on_finish: Callable[[str, bool], None],
+        notice: str,
+        is_sent: bool,
+    ) -> None:
+        if is_sent:
+            try:
+                self.maildir.index.set_flags(key, add='R')
+                self.state.reload()
+            except (OSError, KeyError) as exc:
+                notice = f'message sent; cannot mark replied: {exc}'
+        on_finish(notice, is_sent)
 
     def _resume(self) -> ComposeView | None:
         if self.maildir.path.resolve() != config.drafts.resolve() or not self.state.rows:
@@ -282,30 +296,24 @@ class IndexView(DefaultActionView):
         message: EmailMessage,
         body: str,
         key: str,
-        notice: Callable[[str], None],
+        on_finish: Callable[[str, bool], None],
     ) -> ChangeView:
         if action == 'parts':
-            from .parts import PartsView
-
             return ChangeView.push(PartsView(message, self.mime))
         if action == 'forward':
-            return ChangeView.push(ComposeView.forward(message, body, notice))
+            return ChangeView.push(ComposeView.forward(message, body, on_finish))
         if action not in ('reply', 'reply_all'):
             raise ValueError(f'unknown message action: {action}')
         return ChangeView.push(
             ComposeView(
                 compose.reply(message, body, config, all_recipients=action == 'reply_all'),
-                notice,
-                replied_state=self.maildir,
-                replied_index=self.state,
-                replied_key=key,
+                lambda notice, is_sent: self._reply_finished(key, on_finish, notice, is_sent),
             )
         )
 
     def on_open(self, context: ui.UIContext) -> ChangeView | None:
         if not self.state.rows:
             return None
-        from .message import MessageView
 
         item = self.state.selected_message
         if 'S' not in item.flags:
@@ -349,7 +357,6 @@ class IndexView(DefaultActionView):
     def on_parts(self, context: ui.UIContext) -> ChangeView | None:
         if not self.state.rows:
             return None
-        from .parts import PartsView
 
         return ChangeView.push(PartsView(self._message(), self.mime))
 
@@ -357,6 +364,7 @@ class IndexView(DefaultActionView):
         if not self.state.rows:
             return None
         message = self._message()
+        key = self.state.selected_message.key
         return ChangeView.push(
             ComposeView(
                 compose.reply(
@@ -365,10 +373,7 @@ class IndexView(DefaultActionView):
                     config,
                     all_recipients=all_recipients,
                 ),
-                self._set_notice,
-                replied_state=self.maildir,
-                replied_index=self.state,
-                replied_key=self.state.selected_message.key,
+                lambda notice, is_sent: self._reply_finished(key, self._set_notice, notice, is_sent),
             )
         )
 
