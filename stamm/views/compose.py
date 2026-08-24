@@ -55,7 +55,7 @@ class ComposeView:
     def _finish(self, notice: str) -> None:
         self.on_finish(notice)
 
-    def run(self, screen: curses.window) -> ChangeView | None:
+    def run(self, screen: curses.window) -> ChangeView:
         app = self.app
         data = self.data
         edited = False
@@ -71,7 +71,7 @@ class ComposeView:
                     screen.refresh()
                 if not changed and not edited:
                     self._finish('')
-                    return None
+                    return ChangeView.close()
                 edited = edited or changed
                 errors = compose.validate(data)
                 if errors:
@@ -92,7 +92,7 @@ class ComposeView:
                     continue
                 if action in (None, 'discard'):
                     self._finish('')
-                    return None
+                    return ChangeView.close()
                 try:
                     if action == 'draft':
                         delivery.save_draft(data, app.config)
@@ -110,7 +110,7 @@ class ComposeView:
                     if self.old_draft:
                         self.old_draft.unlink(missing_ok=True)
                     self._finish(notice)
-                    return None
+                    return ChangeView.close()
                 except (OSError, delivery.DeliveryError) as exc:
                     PagerView('Delivery failed', str(exc), app.theme).run(screen)
                     retry = ChooseView(
@@ -129,9 +129,9 @@ class ComposeView:
                             self._finish('draft saved')
                         except OSError as draft_exc:
                             self._finish(str(draft_exc))
-                        return None
+                        return ChangeView.close()
                     self._finish(str(exc))
-                    return None
+                    return ChangeView.close()
         finally:
             if self.workspace:
                 self.workspace.cleanup()

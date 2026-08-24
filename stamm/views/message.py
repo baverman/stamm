@@ -49,7 +49,7 @@ class MessageView:
     def _set_notice(self, notice: str) -> None:
         self.notice = notice
 
-    def run(self, screen: curses.window) -> ChangeView | None:
+    def run(self, screen: curses.window) -> ChangeView:
         app = self.app
         if self.message is None:
             self._open(app)
@@ -62,7 +62,7 @@ class MessageView:
             pressed = PagerView(self.item.subject, text, app.theme).run(screen)
             action = keys.resolve(self.compiled_actions, pressed)
             if action == 'back':
-                return None
+                return ChangeView.close()
             if action == 'parts':
                 from .parts import PartsView
 

@@ -63,10 +63,7 @@ class App:
             while self.stack:
                 self.mime.reap()
                 transition = self.stack[-1].run(self.screen)
-                if transition is None:
-                    self.stack.pop()
-                else:
-                    transition.apply(self.stack)
+                transition.apply(self.stack)
         finally:
             for state in self.maildirs.values():
                 state.index.close()
