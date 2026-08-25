@@ -97,9 +97,9 @@ class IndexView(MailActionsMixin, DefaultActionView):
             flags = ''.join(
                 (
                     'D' if item.key in deleted else '',
-                    'N' if 'S' not in item.flags else '',
+                    '!' if 'F' in item.flags else '',
                     'r' if 'R' in item.flags else '',
-                    'F' if 'F' in item.flags else '',
+                    'N' if 'S' not in item.flags else '',
                 )
             )[:3]
             values = {
