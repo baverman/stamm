@@ -18,13 +18,23 @@ class PagerWidget(ActionHandler[None]):
     offset: int = field(default=0, init=False)
     visible: int = field(default=1, init=False)
     maximum: int = field(default=0, init=False)
+    _cached_lines: tuple[int, object, list[list[ui.TextSpan]] | None] = (0, None, None)
+
+    def get_lines(self, width: int) -> list[list[ui.TextSpan]]:
+        oldw, oldobj, lines = self._cached_lines
+        if lines is None or oldw != width or oldobj is not self.text:
+            spans = (ui.TextSpan(self.text),) if isinstance(self.text, str) else self.text
+            lines = ui.wrap_spans(spans, width - 1)
+            self._cached_lines = width, self.text, lines
+        else:
+            return lines
+        return lines
 
     def draw(self, context: ui.UIContext) -> None:
         window = context.screen
         window.erase()
         height, width = window.getmaxyx()
-        spans = (ui.TextSpan(self.text),) if isinstance(self.text, str) else self.text
-        lines = ui.wrap_spans(spans, width - 1)
+        lines = self.get_lines(width)
         self.visible = max(1, height - 1)
         self.maximum = max(0, len(lines) - self.visible)
         self.offset = min(self.offset, self.maximum)

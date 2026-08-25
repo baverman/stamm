@@ -124,7 +124,7 @@ class IndexView(MailActionsMixin, DefaultActionView):
                 ui.put(screen, y, x, values[name].ljust(column_width), visible_width, attr)
                 x += column_width
         count = len(self.state.rows)
-        summary = f' {count} {"message" if count == 1 else "messages"}'
+        summary = f'{count} {"message" if count == 1 else "messages"}'
         ui.status(screen, self.notice or summary, theme.status)
         self.notice = ''
 
