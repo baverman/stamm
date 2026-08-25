@@ -109,7 +109,7 @@ class IndexView(MailActionsMixin, DefaultActionView):
                 'subject': '  ' * row.depth + item.subject.replace('\n', ' '),
             }
             selected = start + y - 1 == self.state.selected
-            selected_attr = theme.indicator if selected else 0
+            selected_attr = theme.index.indicator if selected else 0
             ui.put(screen, y, 0, ' ' * width, width, selected_attr)
             x = 0
             for literal, name, specification, _conversion in format_parts:

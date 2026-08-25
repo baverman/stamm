@@ -7,7 +7,7 @@ from dataclasses import dataclass, fields, is_dataclass, make_dataclass
 from email.utils import getaddresses
 from pathlib import Path
 from string import Formatter
-from typing import Any, Callable, TypeVar, get_type_hints
+from typing import Any, Callable, TypeVar
 
 from .schema import Typ, as_kv, as_list, field, optfield
 from .theme import CursesTheme
@@ -74,25 +74,18 @@ class ColorStyle:
     bg: str | None = optfield(color)
     attrs: tuple[str, ...] | None = optfield(as_tuple(color_attribute))
 
-    def fallback(self, other: ColorStyle) -> ColorStyle:
-        return ColorStyle(
-            self.fg or other.fg, self.bg or other.bg, self.attrs if self.attrs is not None else other.attrs
-        )
 
-
-def config_from_theme(theme: type[Any], name: str) -> type[Any]:
+def config_from_theme(theme: Any, name: str) -> type[Any]:
     config_fields: list[tuple[str, Any, Any]] = []
-    hints = get_type_hints(theme)
-    for theme_field in fields(theme):
-        field_type = hints[theme_field.name]
-        if isinstance(field_type, type) and is_dataclass(field_type):
-            nested_name = field_type.__name__.removesuffix('Theme') + 'ColorConfig'
-            nested = config_from_theme(field_type, nested_name)
-            config_fields.append((theme_field.name, nested, field(nested, default=nested(), required=False)))
-        elif field_type is int:
-            config_fields.append((theme_field.name, ColorStyle | None, optfield(ColorStyle)))
+    for f in fields(theme):
+        if is_dataclass(f.type):
+            nested_name = f.name.removesuffix('Theme') + 'ColorConfig'
+            nested = config_from_theme(f.type, nested_name)
+            config_fields.append((f.name, nested, field(nested, default=nested(), required=False)))
+        elif f.type is int:
+            config_fields.append((f.name, ColorStyle | None, optfield(ColorStyle, f.metadata.get('default'))))
         else:
-            raise TypeError(f'unsupported theme field type: {field_type}')
+            raise TypeError(f'unsupported theme field type: {f.type}')
     return make_dataclass(name, config_fields, frozen=True)
 
 

@@ -6,8 +6,19 @@ if TYPE_CHECKING:
     from _typeshed import DataclassInstance
 
 
-def fallback(name: str) -> int:
-    return field(default=0, metadata={'fallback': name})
+@dataclass(frozen=True)
+class Style:
+    fg: str | None = None
+    bg: str | None = None
+    attrs: tuple[str, ...] | None = None
+
+
+def fallback(name: str, default: Style | None = None) -> int:
+    return field(default=0, metadata={'fallback': name, 'default': default})
+
+
+def color(default: Style) -> int:
+    return field(default=0, metadata={'default': default})
 
 
 @dataclass(frozen=True)
@@ -31,18 +42,11 @@ class MessageTheme:
 @dataclass(frozen=True)
 class CursesTheme:
     normal: int = 0
-    header: int = 0
-    status: int = 0
-    indicator: int = 0
+    header: int = color(Style(attrs=('reverse',)))
+    status: int = color(Style(attrs=('reverse',)))
+    indicator: int = color(Style(attrs=('reverse',)))
     index: IndexTheme = IndexTheme()
     message: MessageTheme = MessageTheme()
-
-
-@dataclass(frozen=True)
-class Style:
-    fg: str | None = None
-    bg: str | None = None
-    attrs: tuple[str, ...] | None = None
 
 
 def style_fallback(self: Style | None, other: Style | None) -> Style:
