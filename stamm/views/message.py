@@ -5,7 +5,6 @@ from email.message import EmailMessage
 from typing import ClassVar
 
 from .. import keys, ui
-from ..message import message_headers
 from ..mime import MimeManager
 from ..state import IndexState
 from ..theme import MessageTheme
@@ -18,7 +17,14 @@ from .parts import PartsView
 @dataclass
 class MessageView(MailActionsMixin, DefaultActionView):
     namespace: ClassVar[str] = 'message'
-    actions: ClassVar[keys.ActionSet] = GLOBAL_ACTIONS | MAIL_ACTIONS | {'open_html': ('h',)}
+    actions: ClassVar[keys.ActionSet] = (
+        GLOBAL_ACTIONS
+        | MAIL_ACTIONS
+        | {
+            'open_html': ('h',),
+            'toggle_headers': ('w',),
+        }
+    )
     compiled_actions: ClassVar[keys.Bindings] = {}
 
     message: EmailMessage
@@ -27,6 +33,7 @@ class MessageView(MailActionsMixin, DefaultActionView):
     state: IndexState
     key: str
     notice: str = field(default='', init=False)
+    show_all_headers: bool = field(default=False, init=False)
     pager: PagerWidget = field(init=False)
 
     def __post_init__(self) -> None:
@@ -40,12 +47,22 @@ class MessageView(MailActionsMixin, DefaultActionView):
 
     def _pager_text(self, theme: MessageTheme) -> tuple[ui.TextSpan, ...]:
         spans: list[ui.TextSpan] = []
-        for name, value in message_headers(self.message):
+        headers = list(self.message.raw_items())
+        if not self.show_all_headers:
+            wanted = ('date', 'from', 'to', 'cc', 'subject')
+            headers = [
+                header
+                for wanted_name in wanted
+                if (header := next((item for item in headers if item[0].lower() == wanted_name), None))
+            ]
+        for name, value in headers:
             try:
                 attr = getattr(theme, 'header_' + name.lower())
             except AttributeError:
                 attr = theme.header
-            spans.append(ui.TextSpan(f'{name}: {value}\n', attr))
+            lines = value.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+            text = f'{name}: {lines[0]}\n' + ''.join(f'    {line.lstrip()}\n' for line in lines[1:])
+            spans.append(ui.TextSpan(text, attr))
         spans.extend((ui.TextSpan('\n'), ui.TextSpan(self.body)))
         return tuple(spans)
 
@@ -73,6 +90,11 @@ class MessageView(MailActionsMixin, DefaultActionView):
             self.notice = 'opened HTML externally'
         except Exception as exc:
             self.notice = str(exc)
+
+    def on_toggle_headers(self, _context: ui.UIContext) -> None:
+        self.show_all_headers = not self.show_all_headers
+        self.pager.text = ''
+        self.pager.offset = 0
 
     def on_parts(self, context: ui.UIContext) -> ChangeView:
         return ChangeView.push(PartsView(self.message, self.mime))
