@@ -18,7 +18,7 @@ from .parts import PartsView
 @dataclass
 class MessageView(MailActionsMixin, DefaultActionView):
     namespace: ClassVar[str] = 'message'
-    actions: ClassVar[keys.ActionSet] = GLOBAL_ACTIONS | MAIL_ACTIONS
+    actions: ClassVar[keys.ActionSet] = GLOBAL_ACTIONS | MAIL_ACTIONS | {'open_html': ('h',)}
     compiled_actions: ClassVar[keys.Bindings] = {}
 
     message: EmailMessage
@@ -53,14 +53,26 @@ class MessageView(MailActionsMixin, DefaultActionView):
         text = self._pager_text(context.theme.message)
         if not self.pager.text:
             self.pager.text = text
-        if self.notice:
-            self.pager.text = text + (ui.TextSpan(f'\n\n[{self.notice}]'),)
-            self.notice = ''
+        notice = self.notice
+        self.notice = ''
         self.pager.draw(context)
+        if notice:
+            ui.status(context.screen, notice, context.theme.status)
 
     def on_unknown(self, context: ui.UIContext, ch: keys.Key) -> ChangeView | None:
         action = keys.resolve(PagerWidget.compiled_actions, ch)
         return self.pager.handle(context, action, ch)
+
+    def on_open_html(self, _context: ui.UIContext) -> None:
+        part = self.message.get_body(preferencelist=('html',))
+        if part is None:
+            self.notice = 'no HTML part'
+            return
+        try:
+            self.mime.open(part, self.message)
+            self.notice = 'opened HTML externally'
+        except Exception as exc:
+            self.notice = str(exc)
 
     def on_parts(self, context: ui.UIContext) -> ChangeView:
         return ChangeView.push(PartsView(self.message, self.mime))
