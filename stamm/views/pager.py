@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import ClassVar
 
-from .. import ui
 from ..tui import keys
+from ..tui import text as tui_text
 from . import GLOBAL_ACTIONS, MOVE_ACTIONS, PAGE_ACTIONS, ActionHandler, DefaultActionView, UIContext
 
 
@@ -13,21 +13,18 @@ class PagerWidget(ActionHandler[None]):
     namespace: ClassVar[str] = 'pager'
     actions: ClassVar[keys.ActionSet] = MOVE_ACTIONS | PAGE_ACTIONS
 
-    text: str | tuple[ui.TextSpan, ...]
+    lines: tui_text.TextLines
     offset: int = field(default=0, init=False)
     visible: int = field(default=1, init=False)
     maximum: int = field(default=0, init=False)
-    _cached_lines: tuple[int, object, list[list[ui.TextSpan]] | None] = (0, None, None)
+    _cached_lines: tuple[int, object, list[list[tui_text.TextSpan]] | None] = (0, None, None)
 
-    def get_lines(self, width: int) -> list[list[ui.TextSpan]]:
-        oldw, oldobj, lines = self._cached_lines
-        if lines is None or oldw != width or oldobj is not self.text:
-            spans = (ui.span(self.text),) if isinstance(self.text, str) else self.text
-            lines = ui.wrap_spans(spans, width - 1)
-            self._cached_lines = width, self.text, lines
-        else:
-            return lines
-        return lines
+    def get_lines(self, width: int) -> list[list[tui_text.TextSpan]]:
+        oldw, oldobj, wrapped = self._cached_lines
+        if wrapped is None or oldw != width or oldobj is not self.lines:
+            wrapped = tui_text.wrap_spans(self.lines, width)
+            self._cached_lines = width, self.lines, wrapped
+        return wrapped
 
     def draw(self, context: UIContext) -> None:
         window = context.screen
@@ -40,7 +37,7 @@ class PagerWidget(ActionHandler[None]):
         for row, line in enumerate(lines[self.offset : self.offset + self.visible]):
             x = 0
             for span in line:
-                ui.put(window, row, x, span.text, max(0, width - 1 - x), span.attr)
+                tui_text.put(window, row, x, span.text, max(0, width - x), span.attr)
                 x += span.width
         window.refresh()
 
@@ -66,15 +63,15 @@ class PagerWidget(ActionHandler[None]):
 class PagerView(PagerWidget, DefaultActionView):
     actions: ClassVar[keys.ActionSet] = GLOBAL_ACTIONS | PagerWidget.actions
 
-    def __init__(self, title: str, text: str | tuple[ui.TextSpan, ...]) -> None:
-        super().__init__(text)
+    def __init__(self, title: str, lines: tui_text.TextLines) -> None:
+        super().__init__(lines)
         self.title = title
 
     def draw(self, context: UIContext) -> None:
         window = context.screen
         window.erase()
         height, width = window.getmaxyx()
-        ui.put(window, 0, 0, self.title.ljust(width), width, context.theme.header)
+        tui_text.put(window, 0, 0, self.title.ljust(width), width, context.theme.header)
         if height > 1:
             super().draw(context.subcontext(height - 1, width, 1, 0))
         window.refresh()

@@ -36,11 +36,11 @@ def _view() -> MessageView:
 def test_toggle_headers_shows_all_headers_without_raw_payloads() -> None:
     view = _view()
     view.pager.offset = 3
-    initial = ''.join(span.text for span in view._pager_text(MessageTheme()))
+    initial = '\n'.join(''.join(span.text for span in line) for line in view._pager_lines(MessageTheme()))
 
     view.on_toggle_headers(cast(Any, None))
 
-    expanded = ''.join(span.text for span in view._pager_text(MessageTheme()))
+    expanded = '\n'.join(''.join(span.text for span in line) for line in view._pager_lines(MessageTheme()))
     assert 'X-Extra:' not in initial
     assert 'X-Extra: first line\n    second line\n    third line\n' in expanded
     assert 'rendered body' in expanded
@@ -49,5 +49,5 @@ def test_toggle_headers_shows_all_headers_without_raw_payloads() -> None:
 
     view.on_toggle_headers(cast(Any, None))
 
-    collapsed = ''.join(span.text for span in view._pager_text(MessageTheme()))
+    collapsed = '\n'.join(''.join(span.text for span in line) for line in view._pager_lines(MessageTheme()))
     assert collapsed == initial

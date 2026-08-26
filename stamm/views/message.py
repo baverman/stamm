@@ -9,6 +9,7 @@ from ..mime import MimeManager
 from ..state import IndexState
 from ..theme import MessageTheme
 from ..tui import keys
+from ..tui import text as tui_text
 from . import GLOBAL_ACTIONS, MAIL_ACTIONS, DefaultActionView, Transition, UIContext
 from .mail_actions import MailActionsMixin
 from .pager import PagerWidget
@@ -37,7 +38,7 @@ class MessageView(MailActionsMixin, DefaultActionView):
     pager: PagerWidget = field(init=False)
 
     def __post_init__(self) -> None:
-        self.pager = PagerWidget('')
+        self.pager = PagerWidget([])
 
     def _set_notice(self, notice: str, _is_sent: bool) -> None:
         self.notice = notice
@@ -45,8 +46,8 @@ class MessageView(MailActionsMixin, DefaultActionView):
     def _mail_action_message(self) -> tuple[EmailMessage, str, str]:
         return self.message, self.body, self.key
 
-    def _pager_text(self, theme: MessageTheme) -> tuple[ui.TextSpan, ...]:
-        spans: list[ui.TextSpan] = []
+    def _pager_lines(self, theme: MessageTheme) -> tui_text.TextLines:
+        spans: list[tui_text.TextSpan] = []
         headers = list(self.message.raw_items())
         if not self.show_all_headers:
             wanted = ('date', 'from', 'to', 'cc', 'subject')
@@ -62,18 +63,18 @@ class MessageView(MailActionsMixin, DefaultActionView):
                 attr = theme.header
             lines = value.replace('\r\n', '\n').replace('\r', '\n').split('\n')
             text = f'{name}: {lines[0]}\n' + ''.join(f'    {line.lstrip()}\n' for line in lines[1:])
-            spans.append(ui.span(text, attr))
-        spans.extend((ui.span('\n'), ui.span(self.body)))
-        return tuple(spans)
+            spans.append(tui_text.span(text, attr))
+        spans.extend((tui_text.span('\n'), tui_text.span(self.body)))
+        return tui_text.split_spans(spans)
 
     def draw(self, context: UIContext) -> None:
         window = context.screen
         window.erase()
         height, width = window.getmaxyx()
-        ui.put(window, 0, 0, self.message.get('Subject', '').ljust(width), width, context.theme.header)
-        text = self._pager_text(context.theme.message)
-        if not self.pager.text:
-            self.pager.text = text
+        tui_text.put(window, 0, 0, self.message.get('Subject', '').ljust(width), width, context.theme.header)
+        lines = self._pager_lines(context.theme.message)
+        if not self.pager.lines:
+            self.pager.lines = lines
         notice = self.notice
         self.notice = ''
         if height > 1:
@@ -98,7 +99,7 @@ class MessageView(MailActionsMixin, DefaultActionView):
 
     def on_toggle_headers(self, _context: UIContext) -> None:
         self.show_all_headers = not self.show_all_headers
-        self.pager.text = ''
+        self.pager.lines = []
         self.pager.offset = 0
 
     def on_parts(self, context: UIContext) -> Transition:

@@ -5,7 +5,6 @@ from __future__ import annotations
 import curses
 import os
 import time
-import unicodedata
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -14,7 +13,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from .theme import Theme as Theme
-from .tui.compat import cache
+from .tui import text as tui_text
 from .tui.theme import FallbackInfo, Style, ThemeNode
 
 MONTHS = ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')
@@ -43,17 +42,6 @@ COLOR_ATTRIBUTES = {
     'underline': curses.A_UNDERLINE,
     'standout': curses.A_STANDOUT,
 }
-
-
-@dataclass(frozen=True, slots=True)
-class TextSpan:
-    text: str
-    attr: int
-    width: int
-
-
-def span(text: str, attr: int = 0) -> TextSpan:
-    return TextSpan(text, attr, text_width(text))
 
 
 def _color_index(value: str) -> int:
@@ -141,96 +129,9 @@ def viewport_start(selected: int, total: int, visible: int, current: int) -> int
     return min(max(0, start), maximum)
 
 
-def wrap_text(text: str, columns: int) -> list[str]:
-    """Wrap text to terminal cell width while preserving whitespace."""
-    columns = max(1, columns)
-    result: list[str] = []
-    for source in text.splitlines() or ['']:
-        source = source.expandtabs(8)
-        if not source:
-            result.append('')
-            continue
-        chunk: list[str] = []
-        used = 0
-        for character in source:
-            cell_width = _character_width(character)
-            if chunk and used + cell_width > columns:
-                result.append(''.join(chunk))
-                chunk = []
-                used = 0
-            chunk.append(character)
-            used += cell_width
-        result.append(''.join(chunk))
-    return result
-
-
-def wrap_spans(spans: Sequence[TextSpan], columns: int) -> list[list[TextSpan]]:
-    columns = max(1, columns)
-    result: list[list[TextSpan]] = [[]]
-    used = 0
-    source_column = 0
-    buffer: list[str] = []
-    buffer_attr = 0
-    buffer_width = 0
-    ended_with_newline = False
-
-    def flush() -> None:
-        nonlocal buffer_width
-        if buffer:
-            result[-1].append(TextSpan(''.join(buffer), buffer_attr, buffer_width))
-            buffer.clear()
-            buffer_width = 0
-
-    def append(character: str, attr: int) -> None:
-        nonlocal buffer_attr, buffer_width, used
-        cell_width = _character_width(character)
-        if buffer and buffer_attr != attr:
-            flush()
-        if (buffer or result[-1]) and used + cell_width > columns:
-            flush()
-            result.append([])
-            used = 0
-        if not buffer:
-            buffer_attr = attr
-        buffer.append(character)
-        buffer_width += cell_width
-        used += cell_width
-
-    for span in spans:
-        for character in span.text.replace('\r\n', '\n').replace('\r', '\n'):
-            if character == '\n':
-                flush()
-                result.append([])
-                used = 0
-                source_column = 0
-                ended_with_newline = True
-                continue
-            ended_with_newline = False
-            if character == '\t':
-                spaces = 8 - source_column % 8
-                for _ in range(spaces):
-                    append(' ', span.attr)
-                source_column += spaces
-            else:
-                append(character, span.attr)
-                source_column += 1
-    flush()
-    if ended_with_newline:
-        result.pop()
-    return result
-
-
-def put(window: curses.window, y: int, x: int, text: str, width: int, attr: int = 0) -> None:
-    if width > 0:
-        try:
-            window.addnstr(y, x, text, width, attr)
-        except curses.error:
-            pass
-
-
 def status(window: curses.window, text: str, attr: int) -> None:
     height, width = window.getmaxyx()
-    put(window, height - 1, 0, text.ljust(width), width, attr)
+    tui_text.put(window, height - 1, 0, text.ljust(width), width, attr)
     window.refresh()
 
 
@@ -242,39 +143,6 @@ class Completion:
 
 
 Completer = Callable[[str, int], Sequence[Completion | str]]
-
-
-@cache
-def _character_width(character: str) -> int:
-    if unicodedata.combining(character):
-        return 0
-    return 2 if unicodedata.east_asian_width(character) in ('W', 'F') else 1
-
-
-def text_width(value: str) -> int:
-    return sum(_character_width(character) for character in value)
-
-
-def _input_view(value: str, cursor: int, columns: int) -> tuple[str, int]:
-    if columns <= 0:
-        return '', 0
-    start = cursor
-    used = 0
-    while start > 0:
-        width = _character_width(value[start - 1])
-        if used + width >= columns:
-            break
-        start -= 1
-        used += width
-    end = start
-    remaining = columns
-    while end < len(value):
-        width = _character_width(value[end])
-        if width > remaining:
-            break
-        remaining -= width
-        end += 1
-    return value[start:end], text_width(value[start:cursor])
 
 
 def _path_completion_items(value: str, cursor: int, *, directories_only: bool = False) -> list[Completion]:
@@ -363,18 +231,27 @@ def prompt(
         for offset in range(clear_rows):
             y = height - 2 - offset
             if y >= 0:
-                put(window, y, 0, ' ' * width, width)
+                tui_text.put(window, y, 0, ' ' * width, width)
         for offset, item in enumerate(choices[start : start + rows]):
             y = height - 1 - rows + offset
             text = item.label if item.label is not None else item.value
             attr = curses.A_REVERSE if start + offset == selected else 0
-            put(window, y, 0, text.ljust(width), width, attr)
+            tui_text.put(window, y, 0, text.ljust(width), width, attr)
         popup_rows = rows
 
-        label_width = text_width(label)
+        label_width = tui_text.text_width(label)
         available = max(0, width - label_width)
-        visible, cursor_column = _input_view(value, cursor, available)
-        put(window, height - 1, 0, (label + visible).ljust(width), width, status_attr)
+        if available:
+            cursor_width = tui_text.text_width(value[:cursor])
+            cursor_column = min(cursor_width, available - 1)
+            hidden_columns = cursor_width - cursor_column
+            _hidden, remainder, hidden_width = tui_text.fit_text(value, hidden_columns)
+            visible, _remainder, _visible_width = tui_text.fit_text(remainder, available)
+            cursor_column = min(cursor_width - hidden_width, available - 1)
+        else:
+            visible = ''
+            cursor_column = 0
+        tui_text.put(window, height - 1, 0, (label + visible).ljust(width), width, status_attr)
         try:
             window.move(height - 1, min(width - 1, label_width + cursor_column))
         except curses.error:

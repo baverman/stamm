@@ -9,6 +9,7 @@ from typing import Callable
 
 from .. import compose, delivery, ui
 from ..config import config
+from ..tui import text as tui_text
 from . import Transition, UIContext
 from .choose import ChooseView
 from .pager import PagerView
@@ -97,7 +98,7 @@ class ComposeView:
                     self._finish(notice, is_sent)
                     return Transition.close()
                 except (OSError, delivery.DeliveryError) as exc:
-                    PagerView('Delivery failed', str(exc)).run(context)
+                    PagerView('Delivery failed', tui_text.span_lines(str(exc))).run(context)
                     retry = ChooseView(
                         'Delivery failed: edit, draft, discard',
                         {'e': 'edit', 'd': 'draft', 'x': 'discard'},

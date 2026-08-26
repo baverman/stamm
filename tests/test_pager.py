@@ -4,6 +4,7 @@ import curses
 from typing import cast
 
 from stamm.theme import Theme
+from stamm.tui.text import span_lines
 from stamm.views import UIContext
 from stamm.views.pager import PagerView, PagerWidget
 
@@ -40,19 +41,19 @@ def _context(window: _Window) -> UIContext:
 def test_pager_widget_draws_text_from_first_row() -> None:
     window = _Window(3, 20)
 
-    PagerWidget('body').draw(_context(window))
+    PagerWidget(span_lines('body')).draw(_context(window))
 
-    assert window.writes == [(0, 0, 'body', 19, 0)]
+    assert window.writes == [(0, 0, 'body', 20, 0)]
     assert window.derived is None
 
 
 def test_pager_view_draws_header_above_pager_subwindow() -> None:
     window = _Window(4, 20)
 
-    PagerView('Title', 'body').draw(_context(window))
+    PagerView('Title', span_lines('body')).draw(_context(window))
 
     assert window.writes == [(0, 0, 'Title'.ljust(20), 20, 0)]
     assert window.derived is not None
     height, width, y, x, child = window.derived
     assert (height, width, y, x) == (3, 20, 1, 0)
-    assert child.writes == [(0, 0, 'body', 19, 0)]
+    assert child.writes == [(0, 0, 'body', 20, 0)]

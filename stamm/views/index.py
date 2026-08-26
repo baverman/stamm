@@ -16,6 +16,7 @@ from ..mime import MimeManager
 from ..search import parse_query
 from ..state import IndexState, SearchState
 from ..tui import keys
+from ..tui import text as tui_text
 from . import GLOBAL_ACTIONS, MAIL_ACTIONS, MOVE_ACTIONS, PAGE_ACTIONS, DefaultActionView, Transition, UIContext
 from .compose import ComposeView
 from .mail_actions import MailActionsMixin
@@ -72,7 +73,7 @@ class IndexView(MailActionsMixin, DefaultActionView):
         screen.erase()
         height, width = screen.getmaxyx()
         theme = context.theme
-        ui.put(screen, 0, 0, self.state.title.ljust(width), width, theme.header)
+        tui_text.put(screen, 0, 0, self.state.title.ljust(width), width, theme.header)
         visible = max(1, height - 2)
         self.state.offset = ui.viewport_start(self.state.selected, len(self.state.rows), visible, self.state.offset)
         start = self.state.offset
@@ -82,7 +83,7 @@ class IndexView(MailActionsMixin, DefaultActionView):
             for literal, name, specification, conversion in Formatter().parse(config.index.format)
         ]
         fixed_width = sum(
-            ui.text_width(literal) + (0 if name is None or specification == '*' else int(specification))
+            tui_text.text_width(literal) + (0 if name is None or specification == '*' else int(specification))
             for literal, name, specification, _conversion in format_parts
         )
         flexible_width = max(0, width - fixed_width)
@@ -110,18 +111,18 @@ class IndexView(MailActionsMixin, DefaultActionView):
             }
             selected = start + y - 1 == self.state.selected
             selected_attr = theme.index.indicator if selected else 0
-            ui.put(screen, y, 0, ' ' * width, width, selected_attr)
+            tui_text.put(screen, y, 0, ' ' * width, width, selected_attr)
             x = 0
             for literal, name, specification, _conversion in format_parts:
-                literal_width = ui.text_width(literal)
-                ui.put(screen, y, x, literal, min(literal_width, max(0, width - x)), selected_attr)
+                literal_width = tui_text.text_width(literal)
+                tui_text.put(screen, y, x, literal, min(literal_width, max(0, width - x)), selected_attr)
                 x += literal_width
                 if name is None:
                     continue
                 column_width = flexible_width if specification == '*' else int(specification)
                 visible_width = min(column_width, max(0, width - x))
                 attr = selected_attr if selected else styles[name]
-                ui.put(screen, y, x, values[name].ljust(column_width), visible_width, attr)
+                tui_text.put(screen, y, x, values[name].ljust(column_width), visible_width, attr)
                 x += column_width
         count = len(self.state.rows)
         summary = f'{count} {"message" if count == 1 else "messages"}'
@@ -208,12 +209,12 @@ class IndexView(MailActionsMixin, DefaultActionView):
                 process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
                 output, _ = process.communicate()
             except (OSError, ValueError) as exc:
-                PagerView('Pre-refresh hook failed', str(exc)).run(context)
+                PagerView('Pre-refresh hook failed', tui_text.span_lines(str(exc))).run(context)
             else:
                 if output:
                     PagerView(
                         'Pre-refresh hook output',
-                        output.decode('utf-8', errors='replace'),
+                        tui_text.span_lines(output.decode('utf-8', errors='replace')),
                     ).run(context)
         self.state.source_state.refresh()
         self.notice = 'refreshed'

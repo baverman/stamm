@@ -9,7 +9,7 @@ import pytest
 from stamm import ui
 from stamm.config import config
 from stamm.theme import IndexTheme, MessageTheme, Theme
-from stamm.ui import format_index_date, format_sender, span, viewport_start, wrap_spans, wrap_text
+from stamm.ui import format_index_date, format_sender, viewport_start
 from stamm.views import UIContext
 from stamm.views.choose import ChooseView
 
@@ -34,27 +34,6 @@ def test_old_date_uses_year() -> None:
 )
 def test_format_sender(sender: str, expected: str) -> None:
     assert format_sender(sender) == expected
-
-
-@pytest.mark.parametrize(
-    ('text', 'width', 'expected'),
-    [
-        ('abcdefgh', 3, ['abc', 'def', 'gh']),
-        ('one\n\ntwo', 10, ['one', '', 'two']),
-        ('界界a', 3, ['界', '界a']),
-    ],
-)
-def test_wrap_text(text: str, width: int, expected: list[str]) -> None:
-    assert wrap_text(text, width) == expected
-
-
-def test_wrap_spans_preserves_attributes_across_rows() -> None:
-    spans = (span('From:', 1), span(' Alice'))
-
-    assert wrap_spans(spans, 7) == [
-        [span('From:', 1), span(' A')],
-        [span('lice')],
-    ]
 
 
 def test_cursor_does_not_scroll_in_middle_seventy_percent() -> None:
