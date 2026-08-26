@@ -10,8 +10,14 @@ from .theme import BaseTheme
 
 
 class Context[T: BaseTheme](Protocol):
-    screen: curses.window
-    theme: T
+    @property
+    def screen(self) -> curses.window: ...
+
+    @property
+    def theme(self) -> T: ...
+
+
+type BaseContext = Context[BaseTheme]
 
 
 class View[C: Context[Any], T](Protocol):
@@ -45,7 +51,7 @@ class Transition[C: Context[Any]]:
         stack.append(self.view)
 
 
-class ActionSpec:
+class ActionSpec(Protocol):
     namespace: ClassVar[str]
     actions: ClassVar[keys.ActionSet]
 

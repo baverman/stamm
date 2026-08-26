@@ -15,6 +15,6 @@ class _Context:
 def test_pager_draws_text_from_first_row() -> None:
     window = Window(3, 20)
 
-    PagerWidget[_Context](span_lines('body')).draw(_Context(window.as_curses()))
+    PagerWidget(span_lines('body')).draw(_Context(window.as_curses()))
 
     assert window.writes == [(0, 0, 'body', 20, 0)]

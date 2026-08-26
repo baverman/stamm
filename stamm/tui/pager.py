@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
 
 from . import text
-from .views import Context
+from .views import BaseContext
 
 
 @dataclass
-class PagerWidget[C: Context[Any]]:
+class PagerWidget:
     lines: text.TextLines
     offset: int = field(default=0, init=False)
     visible: int = field(default=1, init=False)
@@ -22,7 +21,7 @@ class PagerWidget[C: Context[Any]]:
             self._cached_lines = width, self.lines, wrapped
         return wrapped
 
-    def draw(self, context: C) -> None:
+    def draw(self, context: BaseContext) -> None:
         window = context.screen
         window.erase()
         height, width = window.getmaxyx()
@@ -37,20 +36,20 @@ class PagerWidget[C: Context[Any]]:
                 x += item.width
         window.refresh()
 
-    def on_down(self, context: C) -> None:
+    def on_down(self, context: BaseContext) -> None:
         self.offset = min(self.maximum, self.offset + 1)
 
-    def on_up(self, context: C) -> None:
+    def on_up(self, context: BaseContext) -> None:
         self.offset = max(0, self.offset - 1)
 
-    def on_pageup(self, context: C) -> None:
+    def on_pageup(self, context: BaseContext) -> None:
         self.offset = max(0, self.offset - self.visible)
 
-    def on_pagedown(self, context: C) -> None:
+    def on_pagedown(self, context: BaseContext) -> None:
         self.offset = min(self.maximum, self.offset + self.visible)
 
-    def on_home(self, context: C) -> None:
+    def on_home(self, context: BaseContext) -> None:
         self.offset = 0
 
-    def on_end(self, context: C) -> None:
+    def on_end(self, context: BaseContext) -> None:
         self.offset = self.maximum

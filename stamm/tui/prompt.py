@@ -5,10 +5,9 @@ import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from . import text
-from .views import Context, View
+from .views import BaseContext, View
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,13 +49,13 @@ def _add_history(history: list[str] | None, value: str, limit: int = 100) -> Non
 
 
 @dataclass
-class PromptView(View[Context[Any], str | None]):
+class PromptView(View[BaseContext, str | None]):
     label: str
     initial: str = ''
     completer: Completer | None = None
     history: list[str] | None = None
 
-    def run(self, context: Context[Any]) -> str | None:
+    def run(self, context: BaseContext) -> str | None:
         window = context.screen
         value = self.initial
         cursor = len(value)
