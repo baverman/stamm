@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from stamm import views
 from stamm.config import load_config
 from stamm.config_model import ColorStyle
 
@@ -33,6 +34,7 @@ def test_nested_hooks_config_and_typed_defaults(tmp_path: Path) -> None:
         ),
         encoding='utf-8',
     )
+    views.setup()
 
     config = load_config(path)
 

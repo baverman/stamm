@@ -7,7 +7,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import ui
+from . import ui, views
 from .app import App
 from .config import ConfigError, config, load_config, set_config
 
@@ -33,6 +33,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('maildir', nargs='?', type=Path)
     args = parser.parse_args(argv)
     try:
+        views.setup()
         set_config(load_config())
         # CLI paths are intentionally not expanded by Stamm.
         selected = args.maildir if args.maildir is not None else config.spool

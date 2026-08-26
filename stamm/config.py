@@ -7,10 +7,10 @@ import tomllib
 from dataclasses import replace
 from pathlib import Path
 
-from .config_model import Config, MimeRule
+from .config_model import Config, MimeRule, update_known_actions
 from .schema import parse
 
-__all__ = ['Config', 'ConfigError', 'MimeRule', 'config', 'load_config', 'set_config']
+__all__ = ['Config', 'ConfigError', 'MimeRule', 'config', 'load_config', 'set_config', 'update_known_actions']
 
 config: Config = object.__new__(Config)
 

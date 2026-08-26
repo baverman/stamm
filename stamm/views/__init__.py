@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import ClassVar, Literal, Protocol, Self, cast
 
 from .. import keys, ui
-from ..config import config
+from ..config import config, update_known_actions
 from ..keys import ActionSet, Bindings, Key
 
 GLOBAL_ACTIONS: ActionSet = {
@@ -108,3 +108,14 @@ class DefaultActionView(ActionView[ChangeView]):
 
 def compile_actions(namespace: str, actions: ActionSet) -> Bindings:
     return keys.compile_bindings(namespace, actions, config.keys.get(namespace) or {})
+
+
+def setup() -> None:
+    from .choose import ChooseView
+    from .index import IndexView
+    from .message import MessageView
+    from .pager import PagerView, PagerWidget
+    from .parts import PartsView
+
+    for view in (IndexView, MessageView, PartsView, PagerWidget, PagerView, ChooseView):
+        update_known_actions(view.namespace, view.actions)

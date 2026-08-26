@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import fnmatch
+import logging
+from collections.abc import Iterable
 from dataclasses import dataclass, fields, is_dataclass, make_dataclass
 from email.utils import getaddresses
 from pathlib import Path
@@ -13,6 +15,14 @@ from .schema import Typ, as_kv, as_list, field, optfield
 from .theme import CursesTheme
 
 T = TypeVar('T')
+
+log = logging.getLogger(__name__)
+known_actions: dict[str, set[str]] = {}
+
+
+def update_known_actions(namespace: str, actions: Iterable[str]) -> None:
+    known_actions.setdefault(namespace, set()).update(actions)
+
 
 COLOR_NAMES = frozenset(
     {
@@ -59,6 +69,23 @@ def as_tuple(typ: Typ[T]) -> Callable[[object], tuple[T, ...]]:
         return tuple(convert(value))
 
     return inner
+
+
+def key_bindings(value: object) -> dict[str, dict[str, str]]:
+    result: dict[str, dict[str, str]] = {}
+    for namespace, bindings in as_kv(as_kv(str))(value).items():
+        actions = known_actions.get(namespace)
+        if actions is None:
+            log.warning('keys.%s: unknown namespace', namespace)
+            continue
+        valid: dict[str, str] = {}
+        for source_key, action in bindings.items():
+            if action and action not in actions:
+                log.warning('keys.%s.%s = %r: unknown action', namespace, source_key, action)
+                continue
+            valid[source_key] = action
+        result[namespace] = valid
+    return result
 
 
 def identities(value: object) -> tuple[str, ...]:
@@ -166,7 +193,7 @@ class Config:
     mime: tuple[MimeRule, ...] = field(as_tuple(MimeRule), default=(), required=False)
     colors: ColorConfig = field(ColorConfig, default=DEFAULT_COLORS, required=False)
     index: IndexConfig = field(IndexConfig, default=IndexConfig(), required=False)
-    keys: dict[str, dict[str, str]] = field(as_kv(as_kv(str)), default_factory=dict, required=False)
+    keys: dict[str, dict[str, str]] = field(key_bindings, default_factory=dict, required=False)
 
     @property
     def identity_addresses(self) -> tuple[str, ...]:
