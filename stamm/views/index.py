@@ -60,7 +60,6 @@ class IndexView(MailActionsMixin, DefaultActionView):
             'resume': ('e',),
         }
     )
-    compiled_actions: ClassVar[keys.Bindings] = {}
     state: IndexState
     mime: MimeManager
     open_maildir: Callable[[Path], IndexView]

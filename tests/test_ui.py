@@ -8,7 +8,8 @@ from typing import cast
 
 import pytest
 
-from stamm import keys, ui
+from stamm import ui
+from stamm.config import config
 from stamm.config_model import DEFAULT_COLORS, ColorStyle
 from stamm.ui import TextSpan, format_index_date, format_sender, viewport_start, wrap_spans, wrap_text
 from stamm.views.choose import ChooseView
@@ -106,7 +107,7 @@ def test_choose_maps_generic_and_explicit_keys(
     key: str | int, expected: str | None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(ui, 'status', lambda *_args: None)
-    ChooseView.compiled_actions = keys.compile_bindings(ChooseView.namespace, ChooseView.actions, {})
+    monkeypatch.setitem(vars(config), 'keys', {})
     theme = ui.CursesTheme(0, 0, 0, 0, ui.IndexTheme(0, 0, 0, 0), ui.MessageTheme(0))
     context = ui.UIContext(_ChoiceWindow(key), theme)  # type: ignore[arg-type]
 

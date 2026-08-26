@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import ClassVar, Literal, Protocol, Self, cast
 
 from .. import keys, ui
+from ..config import config
 from ..keys import ActionSet, Bindings, Key
 
 GLOBAL_ACTIONS: ActionSet = {
@@ -66,7 +67,6 @@ class View[T](Protocol):
 class ActionSpec:
     namespace: ClassVar[str]
     actions: ClassVar[ActionSet]
-    compiled_actions: ClassVar[Bindings]
 
 
 class ActionHandler[T](ActionSpec):
@@ -75,9 +75,6 @@ class ActionHandler[T](ActionSpec):
         missing = [f'on_{action}' for action in cls.actions if not callable(getattr(cls, f'on_{action}', None))]
         if missing:
             raise TypeError(f'{cls.__name__} is missing action handlers: {", ".join(missing)}')
-
-    def get_action(self, context: ui.UIContext) -> tuple[str | None, Key]:
-        return keys.read(context.screen, self.compiled_actions)
 
     def handle(self, context: ui.UIContext, action: str | None, ch: Key) -> T | None:
         if action is None:
@@ -95,9 +92,10 @@ class ActionView[T](View[T], ActionHandler[T]):
     def draw(self, context: ui.UIContext) -> None: ...
 
     def run(self, context: ui.UIContext) -> T:
+        bindings = compile_actions(self.namespace, self.actions)
         while True:
             self.draw(context)
-            action, ch = self.get_action(context)
+            action, ch = keys.read(context.screen, bindings)
             result = self.handle(context, action, ch)
             if result is not None:
                 return result
@@ -106,3 +104,7 @@ class ActionView[T](View[T], ActionHandler[T]):
 class DefaultActionView(ActionView[ChangeView]):
     def on_back(self, context: ui.UIContext) -> ChangeView | None:
         return ChangeView.close()
+
+
+def compile_actions(namespace: str, actions: ActionSet) -> Bindings:
+    return keys.compile_bindings(namespace, actions, config.keys.get(namespace) or {})

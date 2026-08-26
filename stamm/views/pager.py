@@ -11,7 +11,6 @@ from . import GLOBAL_ACTIONS, MOVE_ACTIONS, PAGE_ACTIONS, ActionHandler, Default
 class PagerWidget(ActionHandler[None]):
     namespace: ClassVar[str] = 'pager'
     actions: ClassVar[keys.ActionSet] = MOVE_ACTIONS | PAGE_ACTIONS
-    compiled_actions: ClassVar[keys.Bindings] = {}
 
     title: str
     text: str | tuple[ui.TextSpan, ...]

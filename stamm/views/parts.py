@@ -14,7 +14,6 @@ from . import GLOBAL_ACTIONS, MOVE_ACTIONS, DefaultActionView
 class PartsView(DefaultActionView):
     namespace: ClassVar[str] = 'parts'
     actions: ClassVar[keys.ActionSet] = GLOBAL_ACTIONS | MOVE_ACTIONS | {'open': ('ENTER',), 'save': ('s',)}
-    compiled_actions: ClassVar[keys.Bindings] = {}
     message: EmailMessage
     mime: MimeManager
     rows: list[PartRow] = field(init=False)

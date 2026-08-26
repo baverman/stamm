@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import ClassVar
 
 from .. import keys, ui
+from . import compile_actions
 
 
 @dataclass(frozen=True, slots=True)
@@ -14,7 +15,6 @@ class ChooseView:
         'accept': ('ENTER',),
         'cancel': ('^[',),
     }
-    compiled_actions: ClassVar[keys.Bindings] = {}
 
     prompt: str
     choices: Mapping[str, str]
@@ -25,8 +25,9 @@ class ChooseView:
             raise ValueError('primary item must be a choice')
         screen = context.screen
         ui.status(screen, f'{self.prompt} [{"/".join(self.choices)}]', context.theme.status)
+        bindings = compile_actions(self.namespace, self.actions)
         while True:
-            action, ch = keys.read(screen, self.compiled_actions)
+            action, ch = keys.read(screen, bindings)
             if action == 'accept':
                 return self.primary
             if action == 'cancel':

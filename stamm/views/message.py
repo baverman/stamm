@@ -8,7 +8,7 @@ from .. import keys, ui
 from ..mime import MimeManager
 from ..state import IndexState
 from ..theme import MessageTheme
-from . import GLOBAL_ACTIONS, MAIL_ACTIONS, ChangeView, DefaultActionView
+from . import GLOBAL_ACTIONS, MAIL_ACTIONS, ChangeView, DefaultActionView, compile_actions
 from .mail_actions import MailActionsMixin
 from .pager import PagerWidget
 from .parts import PartsView
@@ -25,7 +25,6 @@ class MessageView(MailActionsMixin, DefaultActionView):
             'toggle_headers': ('w',),
         }
     )
-    compiled_actions: ClassVar[keys.Bindings] = {}
 
     message: EmailMessage
     body: str
@@ -35,9 +34,14 @@ class MessageView(MailActionsMixin, DefaultActionView):
     notice: str = field(default='', init=False)
     show_all_headers: bool = field(default=False, init=False)
     pager: PagerWidget = field(init=False)
+    pager_actions: keys.Bindings = field(init=False)
 
     def __post_init__(self) -> None:
         self.pager = PagerWidget(self.message.get('Subject', ''), '')
+
+    def run(self, context: ui.UIContext) -> ChangeView:
+        self.pager_actions = compile_actions(PagerWidget.namespace, PagerWidget.actions)
+        return super().run(context)
 
     def _set_notice(self, notice: str, _is_sent: bool) -> None:
         self.notice = notice
@@ -77,7 +81,7 @@ class MessageView(MailActionsMixin, DefaultActionView):
             ui.status(context.screen, notice, context.theme.status)
 
     def on_unknown(self, context: ui.UIContext, ch: keys.Key) -> ChangeView | None:
-        action = keys.resolve(PagerWidget.compiled_actions, ch)
+        action = keys.resolve(self.pager_actions, ch)
         return self.pager.handle(context, action, ch)
 
     def on_open_html(self, _context: ui.UIContext) -> None:
