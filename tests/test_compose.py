@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 
 import stamm.views.compose as compose_view_module
-from stamm import compose, delivery, ui
+from stamm import compose, delivery
 from stamm.compose import ComposeData
 from stamm.config import Config, set_config
 from stamm.config_model import DEFAULT_COLORS, HooksConfig
@@ -114,8 +114,8 @@ def test_successful_send_reports_is_sent(config: Config, monkeypatch: pytest.Mon
     monkeypatch.setattr(compose_view_module.curses, 'endwin', lambda: None)
     monkeypatch.setattr(compose_view_module.curses, 'reset_prog_mode', lambda: None)
     monkeypatch.setattr(compose, 'edit', lambda *_args: (data, True))
-    monkeypatch.setattr(compose_view_module.ChooseView, 'run', lambda *_args: 'send')
-    monkeypatch.setattr(ui, 'status', lambda _screen, text, _attr: statuses.append(text))
+    monkeypatch.setattr(compose_view_module.ChoiceView, 'run', lambda *_args: 'send')
+    monkeypatch.setattr(compose_view_module.text, 'status', lambda _screen, value, _attr: statuses.append(value))
     monkeypatch.setattr(delivery, 'send', lambda *_args: Path('/tmp/sent'))
 
     view.run(context)

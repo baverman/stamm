@@ -1,19 +1,12 @@
 from __future__ import annotations
 
-import curses
 from datetime import datetime
 from pathlib import Path
 
 import pytest
 
-from stamm import ui
-from stamm.config import config
-from stamm.theme import IndexTheme, MessageTheme, Theme
 from stamm.ui import format_index_date, format_sender, viewport_start
-from stamm.views import UIContext
-from stamm.views.choose import ChooseView
 from stamm.views.index import _maildir_completer
-from tests.tui.fakes import Window
 
 
 def test_recent_date_uses_time() -> None:
@@ -61,34 +54,6 @@ def test_viewport_is_clamped_at_list_edges() -> None:
 def test_final_message_keeps_the_bottom_scroll_margin() -> None:
     assert viewport_start(99, 100, 20, 0) == 86
     assert viewport_start(199, 200, 100, 0) == 110
-
-
-@pytest.mark.parametrize(
-    ('key', 'expected'),
-    [
-        ('\n', 'send'),
-        ('\r', 'send'),
-        (curses.KEY_ENTER, 'send'),
-        ('\x1b', None),
-        ('e', 'edit'),
-    ],
-)
-def test_choose_maps_generic_and_explicit_keys(
-    key: str | int, expected: str | None, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(ui, 'status', lambda *_args: None)
-    monkeypatch.setitem(vars(config), 'keys', {})
-    theme = Theme(0, 0, 0, 0, IndexTheme(0, 0, 0, 0), MessageTheme(0))
-    context = UIContext(Window(keys=[key]).as_curses(), theme)
-
-    assert (
-        ChooseView(
-            'Compose',
-            {'s': 'send', 'e': 'edit', 'd': 'draft', 'x': 'discard'},
-            primary='send',
-        ).run(context)
-        == expected
-    )
 
 
 def test_maildir_completer_only_returns_directories(tmp_path: Path) -> None:

@@ -29,4 +29,4 @@ PAGEUP = "pageup"
 PAGEDOWN = "pagedown"
 ```
 
-The namespaces are `index`, `message`, `parts`, `pager`, and `choose`. A key can be one Unicode character, a control character from `^@` through `^_` or `^?`, or any available curses `KEY_*` name with or without the `KEY_` prefix. Named keys are case-insensitive. `PAGEUP` and `PAGEDOWN` are aliases for `PPAGE` and `NPAGE`. `ENTER` and `BACKSPACE` include the terminal-dependent forms of those keys.
+The namespaces are `index`, `message`, `parts`, `pager`, and `choice`. A key can be one Unicode character, a control character from `^@` through `^_` or `^?`, or any available curses `KEY_*` name with or without the `KEY_` prefix. Named keys are case-insensitive. `PAGEUP` and `PAGEDOWN` are aliases for `PPAGE` and `NPAGE`. `ENTER` and `BACKSPACE` include the terminal-dependent forms of those keys.

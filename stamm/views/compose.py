@@ -7,11 +7,11 @@ from email.message import EmailMessage
 from pathlib import Path
 from typing import Callable
 
-from .. import compose, delivery, ui
+from .. import compose, delivery
 from ..config import config
-from ..tui import text as tui_text
+from ..tui import text
+from ..tui.choice import ChoiceView
 from . import Transition, UIContext
-from .choose import ChooseView
 from .pager import PagerView
 
 
@@ -67,16 +67,18 @@ class ComposeView:
                 edited = edited or changed
                 errors = compose.validate(data)
                 if errors:
-                    action = ChooseView(
+                    action = ChoiceView(
                         'Compose invalid: edit, draft, discard',
                         {'e': 'edit', 'd': 'draft', 'x': 'discard'},
                         primary='edit',
+                        overrides=config.keys.get(ChoiceView.namespace),
                     ).run(context)
                 else:
-                    action = ChooseView(
+                    action = ChoiceView(
                         'Compose: send, edit, draft, discard',
                         {'s': 'send', 'e': 'edit', 'd': 'draft', 'x': 'discard'},
                         primary='send',
+                        overrides=config.keys.get(ChoiceView.namespace),
                     ).run(context)
                 if action == 'edit':
                     continue
@@ -89,7 +91,7 @@ class ComposeView:
                         delivery.save_draft(data, config)
                         notice = 'draft saved'
                     else:
-                        ui.status(screen, 'Sending...', context.theme.status)
+                        text.status(screen, 'Sending...', context.theme.status)
                         delivery.send(data, config)
                         is_sent = True
                         notice = 'message sent'
@@ -98,11 +100,12 @@ class ComposeView:
                     self._finish(notice, is_sent)
                     return Transition.close()
                 except (OSError, delivery.DeliveryError) as exc:
-                    PagerView('Delivery failed', tui_text.span_lines(str(exc))).run(context)
-                    retry = ChooseView(
+                    PagerView('Delivery failed', text.span_lines(str(exc))).run(context)
+                    retry = ChoiceView(
                         'Delivery failed: edit, draft, discard',
                         {'e': 'edit', 'd': 'draft', 'x': 'discard'},
                         primary='edit',
+                        overrides=config.keys.get(ChoiceView.namespace),
                     ).run(context)
                     if retry == 'edit':
                         continue

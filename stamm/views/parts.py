@@ -5,10 +5,8 @@ from email.message import EmailMessage
 from pathlib import Path
 from typing import ClassVar
 
-from .. import ui
 from ..mime import MimeManager, PartRow, part_rows, save_part
-from ..tui import keys, prompt
-from ..tui import text as tui_text
+from ..tui import keys, prompt, text
 from . import GLOBAL_ACTIONS, MOVE_ACTIONS, DefaultActionView, UIContext
 
 
@@ -29,13 +27,13 @@ class PartsView(DefaultActionView):
         screen = context.screen
         screen.erase()
         height, width = screen.getmaxyx()
-        tui_text.put(screen, 0, 0, ' MIME parts '.ljust(width), width, context.theme.header)
+        text.put(screen, 0, 0, ' MIME parts '.ljust(width), width, context.theme.header)
         visible = max(1, height - 2)
         start = min(max(0, self.selected - visible + 1), self.selected)
         for index, row in enumerate(self.rows[start : start + visible], 1):
             attr = context.theme.indicator if start + index - 1 == self.selected else 0
-            tui_text.put(screen, index, 0, '  ' * row.depth + row.label, width, attr)
-        ui.status(screen, self.notice, context.theme.status)
+            text.put(screen, index, 0, '  ' * row.depth + row.label, width, attr)
+        text.status(screen, self.notice, context.theme.status)
         self.notice = ''
 
     def on_down(self, context: UIContext) -> None:

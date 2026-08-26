@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import curses
 import time
 from datetime import datetime
 from email.utils import parseaddr
 
 from .theme import Theme as Theme
-from .tui import text as tui_text
 
 MONTHS = ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')
 
@@ -38,9 +36,3 @@ def viewport_start(selected: int, total: int, visible: int, current: int) -> int
     elif selected >= start + visible - margin:
         start = selected - visible + margin + 1
     return min(max(0, start), maximum)
-
-
-def status(window: curses.window, text: str, attr: int) -> None:
-    height, width = window.getmaxyx()
-    tui_text.put(window, height - 1, 0, text.ljust(width), width, attr)
-    window.refresh()

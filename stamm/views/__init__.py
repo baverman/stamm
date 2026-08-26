@@ -65,11 +65,11 @@ def compile_actions(namespace: str, actions: keys.ActionSet) -> keys.Bindings:
 
 
 def setup() -> None:
-    from .choose import ChooseView
+    from ..tui.choice import ChoiceView
     from .index import IndexView
     from .message import MessageView
     from .pager import PagerView, PagerWidget
     from .parts import PartsView
 
-    for view in (IndexView, MessageView, PartsView, PagerWidget, PagerView, ChooseView):
+    for view in (IndexView, MessageView, PartsView, PagerWidget, PagerView, ChoiceView):
         update_known_actions(view.namespace, view.actions)

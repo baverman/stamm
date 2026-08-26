@@ -6,9 +6,9 @@ from pathlib import Path
 from .config import config
 from .mime import MimeManager
 from .state import MaildirState
-from .tui import text as tui_text
+from .tui import text
+from .tui.choice import ChoiceView
 from .views import Transition, UIContext, View
-from .views.choose import ChooseView
 from .views.index import IndexView
 from .views.pager import PagerView
 
@@ -41,16 +41,17 @@ class App:
         count = sum(len(state.pending_delete) for state in self.maildirs.values())
         if not count:
             return True
-        selected = ChooseView(
+        selected = ChoiceView(
             f'Move {count} deleted message(s) to Trash?',
             {'y': 'yes', 'n': 'no'},
             primary='yes',
+            overrides=config.keys.get(ChoiceView.namespace),
         ).run(self.context)
         if selected != 'yes':
             return True
         errors = [error for state in self.maildirs.values() for error in state.purge_deleted(config.trash)]
         if errors:
-            PagerView('Cannot move deleted messages', tui_text.span_lines('\n'.join(errors))).run(self.context)
+            PagerView('Cannot move deleted messages', text.span_lines('\n'.join(errors))).run(self.context)
             return False
         return True
 

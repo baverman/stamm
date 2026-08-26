@@ -31,6 +31,12 @@ def put(window: curses.window, y: int, x: int, text: str, width: int, attr: int 
             pass
 
 
+def status(window: curses.window, text: str, attr: int) -> None:
+    height, width = window.getmaxyx()
+    put(window, height - 1, 0, text.ljust(width), width, attr)
+    window.refresh()
+
+
 def split_spans(spans: Sequence[TextSpan]) -> TextLines:
     result: list[list[TextSpan]] = [[]]
     ended_with_newline = False
