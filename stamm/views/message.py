@@ -72,9 +72,8 @@ class MessageView(MailActionsMixin, DefaultActionView):
         window.erase()
         height, width = window.getmaxyx()
         tui_text.put(window, 0, 0, self.message.get('Subject', '').ljust(width), width, context.theme.header)
-        lines = self._pager_lines(context.theme.message)
         if not self.pager.lines:
-            self.pager.lines = lines
+            self.pager.lines = self._pager_lines(context.theme.message)
         notice = self.notice
         self.notice = ''
         if height > 1:
