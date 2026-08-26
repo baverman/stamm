@@ -4,8 +4,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import ClassVar
 
-from .. import keys, ui
-from . import compile_actions
+from .. import ui
+from ..tui import keys
+from . import UIContext, compile_actions
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,7 +21,7 @@ class ChooseView:
     choices: Mapping[str, str]
     primary: str
 
-    def run(self, context: ui.UIContext) -> str | None:
+    def run(self, context: UIContext) -> str | None:
         if self.primary not in self.choices.values():
             raise ValueError('primary item must be a choice')
         screen = context.screen

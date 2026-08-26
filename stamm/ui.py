@@ -13,9 +13,8 @@ from email.utils import parseaddr
 from pathlib import Path
 from typing import Any, cast
 
-from .theme import CursesTheme, FallbackInfo, Style, ThemeNode
-from .theme import IndexTheme as IndexTheme
-from .theme import MessageTheme as MessageTheme
+from .theme import Theme as Theme
+from .tui.theme import FallbackInfo, Style, ThemeNode
 
 MONTHS = ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')
 COLOR_INDEXES = {
@@ -46,12 +45,6 @@ COLOR_ATTRIBUTES = {
 
 
 @dataclass(frozen=True, slots=True)
-class UIContext:
-    screen: curses.window
-    theme: CursesTheme
-
-
-@dataclass(frozen=True, slots=True)
 class TextSpan:
     text: str
     attr: int = 0
@@ -70,7 +63,7 @@ def _attributes(names: tuple[str, ...]) -> int:
     return result
 
 
-def initialize_colors(window: curses.window, colors: Any) -> CursesTheme:
+def initialize_colors(window: curses.window, colors: Any) -> Theme:
     pairs: dict[tuple[int, int], int] = {}
     next_pair = 1
     has_colors = curses.has_colors()
@@ -104,8 +97,8 @@ def initialize_colors(window: curses.window, colors: Any) -> CursesTheme:
             pairs[colors_key] = pair
         return result | curses.color_pair(pair)
 
-    fbinfo = FallbackInfo(CursesTheme, 'normal')
-    theme = cast(CursesTheme, ThemeNode('', colors, fbinfo, alloc_color))
+    fbinfo = FallbackInfo(Theme, 'normal')
+    theme = cast(Theme, ThemeNode('', colors, fbinfo, alloc_color))
     window.bkgd(' ', theme.normal)
     return theme
 

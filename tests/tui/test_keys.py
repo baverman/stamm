@@ -4,7 +4,7 @@ import curses
 
 import pytest
 
-from stamm import keys
+from stamm.tui import keys
 
 
 @pytest.mark.parametrize(

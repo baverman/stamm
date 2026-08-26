@@ -3,8 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import ClassVar
 
-from .. import keys, ui
-from . import GLOBAL_ACTIONS, MOVE_ACTIONS, PAGE_ACTIONS, ActionHandler, DefaultActionView
+from .. import ui
+from ..tui import keys
+from . import GLOBAL_ACTIONS, MOVE_ACTIONS, PAGE_ACTIONS, ActionHandler, DefaultActionView, UIContext
 
 
 @dataclass(slots=True)
@@ -29,7 +30,7 @@ class PagerWidget(ActionHandler[None]):
             return lines
         return lines
 
-    def draw(self, context: ui.UIContext) -> None:
+    def draw(self, context: UIContext) -> None:
         window = context.screen
         window.erase()
         height, width = window.getmaxyx()
@@ -45,22 +46,22 @@ class PagerWidget(ActionHandler[None]):
                 x += ui.text_width(span.text)
         window.refresh()
 
-    def on_down(self, context: ui.UIContext) -> None:
+    def on_down(self, context: UIContext) -> None:
         self.offset = min(self.maximum, self.offset + 1)
 
-    def on_up(self, context: ui.UIContext) -> None:
+    def on_up(self, context: UIContext) -> None:
         self.offset = max(0, self.offset - 1)
 
-    def on_pageup(self, context: ui.UIContext) -> None:
+    def on_pageup(self, context: UIContext) -> None:
         self.offset = max(0, self.offset - self.visible)
 
-    def on_pagedown(self, context: ui.UIContext) -> None:
+    def on_pagedown(self, context: UIContext) -> None:
         self.offset = min(self.maximum, self.offset + self.visible)
 
-    def on_home(self, context: ui.UIContext) -> None:
+    def on_home(self, context: UIContext) -> None:
         self.offset = 0
 
-    def on_end(self, context: ui.UIContext) -> None:
+    def on_end(self, context: UIContext) -> None:
         self.offset = self.maximum
 
 

@@ -9,13 +9,14 @@ from pathlib import Path
 from string import Formatter
 from typing import ClassVar
 
-from .. import compose, keys, ui
+from .. import compose, ui
 from ..config import config
 from ..message import parse_message, select_body
 from ..mime import MimeManager
 from ..search import parse_query
 from ..state import IndexState, SearchState
-from . import GLOBAL_ACTIONS, MAIL_ACTIONS, MOVE_ACTIONS, PAGE_ACTIONS, ChangeView, DefaultActionView
+from ..tui import keys
+from . import GLOBAL_ACTIONS, MAIL_ACTIONS, MOVE_ACTIONS, PAGE_ACTIONS, DefaultActionView, Transition, UIContext
 from .compose import ComposeView
 from .mail_actions import MailActionsMixin
 from .message import MessageView
@@ -66,7 +67,7 @@ class IndexView(MailActionsMixin, DefaultActionView):
     notice: str = ''
     reconcile: bool = False
 
-    def draw(self, context: ui.UIContext) -> None:
+    def draw(self, context: UIContext) -> None:
         screen = context.screen
         screen.erase()
         height, width = screen.getmaxyx()
@@ -148,7 +149,7 @@ class IndexView(MailActionsMixin, DefaultActionView):
     def _reload(self) -> None:
         self.state.reload()
 
-    def _search(self, command: str) -> ChangeView | None:
+    def _search(self, command: str) -> Transition | None:
         parts = command.split(maxsplit=1)
         name = parts[0] if parts else ''
         if name != 'search':
@@ -166,10 +167,10 @@ class IndexView(MailActionsMixin, DefaultActionView):
             self.open_maildir,
         )
         if isinstance(self.state, SearchState):
-            return ChangeView.replace(view)
-        return ChangeView.push(view)
+            return Transition.replace(view)
+        return Transition.push(view)
 
-    def _change_maildir(self, context: ui.UIContext) -> IndexView | None:
+    def _change_maildir(self, context: UIContext) -> IndexView | None:
         value = ui.prompt(
             context.screen,
             'Maildir: ',
@@ -195,7 +196,7 @@ class IndexView(MailActionsMixin, DefaultActionView):
         self.state.select_next()
         self.notice = 'marked for deletion'
 
-    def _manual_refresh(self, context: ui.UIContext) -> None:
+    def _manual_refresh(self, context: UIContext) -> None:
         if hook := config.hooks.pre_refresh:
             try:
                 command = [
@@ -233,27 +234,27 @@ class IndexView(MailActionsMixin, DefaultActionView):
         old_path = self.state.source_state.path / self.state.selected_message.path
         return ComposeView.resume(self._message(), old_path, self._resume_finished)
 
-    def _reconcile(self, context: ui.UIContext) -> None:
+    def _reconcile(self, context: UIContext) -> None:
         self.notice = 'reconciling...' if self.state.rows else 'indexing...'
         self.draw(context)
         context.screen.refresh()
         self.state.source_state.refresh()
         self.reconcile = False
 
-    def run(self, context: ui.UIContext) -> ChangeView:
+    def run(self, context: UIContext) -> Transition:
         if self.reconcile:
             self._reconcile(context)
         return super().run(context)
 
-    def on_down(self, context: ui.UIContext) -> None:
+    def on_down(self, context: UIContext) -> None:
         if self.state.rows:
             self.state.select_next()
 
-    def on_up(self, context: ui.UIContext) -> None:
+    def on_up(self, context: UIContext) -> None:
         if self.state.rows:
             self.state.select_previous()
 
-    def _move_page(self, context: ui.UIContext, direction: int) -> None:
+    def _move_page(self, context: UIContext, direction: int) -> None:
         if not self.state.rows:
             return
         visible = max(1, context.screen.getmaxyx()[0] - 2)
@@ -262,21 +263,21 @@ class IndexView(MailActionsMixin, DefaultActionView):
             max(0, self.state.selected + direction * visible),
         )
 
-    def on_pageup(self, context: ui.UIContext) -> None:
+    def on_pageup(self, context: UIContext) -> None:
         self._move_page(context, -1)
 
-    def on_pagedown(self, context: ui.UIContext) -> None:
+    def on_pagedown(self, context: UIContext) -> None:
         self._move_page(context, 1)
 
-    def on_home(self, context: ui.UIContext) -> None:
+    def on_home(self, context: UIContext) -> None:
         if self.state.rows:
             self.state.selected = 0
 
-    def on_end(self, context: ui.UIContext) -> None:
+    def on_end(self, context: UIContext) -> None:
         if self.state.rows:
             self.state.selected = len(self.state.rows) - 1
 
-    def on_open(self, context: ui.UIContext) -> ChangeView | None:
+    def on_open(self, context: UIContext) -> Transition | None:
         if not self.state.rows:
             return None
 
@@ -286,7 +287,7 @@ class IndexView(MailActionsMixin, DefaultActionView):
             self.state.reload()
         message = parse_message(self.state.source_state.path / item.path)
         body = self._render_body(message)
-        return ChangeView.push(
+        return Transition.push(
             MessageView(
                 message,
                 body,
@@ -296,11 +297,11 @@ class IndexView(MailActionsMixin, DefaultActionView):
             )
         )
 
-    def on_refresh(self, context: ui.UIContext) -> None:
+    def on_refresh(self, context: UIContext) -> None:
         if self.state is self.state.source_state:
             self._manual_refresh(context)
 
-    def on_command(self, context: ui.UIContext) -> ChangeView | None:
+    def on_command(self, context: UIContext) -> Transition | None:
         value = ui.prompt(
             context.screen,
             ':',
@@ -312,30 +313,30 @@ class IndexView(MailActionsMixin, DefaultActionView):
             return None
         return self._search(value)
 
-    def on_change(self, context: ui.UIContext) -> ChangeView | None:
+    def on_change(self, context: UIContext) -> Transition | None:
         view = self._change_maildir(context)
-        return ChangeView.push(view) if view is not None else None
+        return Transition.push(view) if view is not None else None
 
-    def on_compose(self, context: ui.UIContext) -> ChangeView:
-        return ChangeView.push(ComposeView(compose.new(config), self._set_notice))
+    def on_compose(self, context: UIContext) -> Transition:
+        return Transition.push(ComposeView(compose.new(config), self._set_notice))
 
-    def on_parts(self, context: ui.UIContext) -> ChangeView | None:
+    def on_parts(self, context: UIContext) -> Transition | None:
         if not self.state.rows:
             return None
 
-        return ChangeView.push(PartsView(self._message(), self.mime))
+        return Transition.push(PartsView(self._message(), self.mime))
 
-    def on_delete(self, context: ui.UIContext) -> None:
+    def on_delete(self, context: UIContext) -> None:
         if self.state.rows:
             self._mark_deleted()
 
-    def on_undelete(self, context: ui.UIContext) -> None:
+    def on_undelete(self, context: UIContext) -> None:
         if self.state.rows:
             self.state.source_state.unmark_deleted(self.state.selected_message.key)
             self.state.select_next()
             self.notice = 'deletion mark removed'
 
-    def on_flag(self, context: ui.UIContext) -> None:
+    def on_flag(self, context: UIContext) -> None:
         if self.state.rows:
             item = self.state.selected_message
             self.state.source_state.index.set_flags(
@@ -345,11 +346,11 @@ class IndexView(MailActionsMixin, DefaultActionView):
             )
             self._reload()
 
-    def on_unread(self, context: ui.UIContext) -> None:
+    def on_unread(self, context: UIContext) -> None:
         if self.state.rows:
             self.state.source_state.index.set_flags(self.state.selected_message.key, remove='S')
             self._reload()
 
-    def on_resume(self, context: ui.UIContext) -> ChangeView | None:
+    def on_resume(self, context: UIContext) -> Transition | None:
         view = self._resume()
-        return ChangeView.push(view) if view is not None else None
+        return Transition.push(view) if view is not None else None

@@ -4,11 +4,12 @@ from dataclasses import dataclass, field
 from email.message import EmailMessage
 from typing import ClassVar
 
-from .. import keys, ui
+from .. import ui
 from ..mime import MimeManager
 from ..state import IndexState
 from ..theme import MessageTheme
-from . import GLOBAL_ACTIONS, MAIL_ACTIONS, ChangeView, DefaultActionView, compile_actions
+from ..tui import keys
+from . import GLOBAL_ACTIONS, MAIL_ACTIONS, DefaultActionView, Transition, UIContext, compile_actions
 from .mail_actions import MailActionsMixin
 from .pager import PagerWidget
 from .parts import PartsView
@@ -39,7 +40,7 @@ class MessageView(MailActionsMixin, DefaultActionView):
     def __post_init__(self) -> None:
         self.pager = PagerWidget(self.message.get('Subject', ''), '')
 
-    def run(self, context: ui.UIContext) -> ChangeView:
+    def run(self, context: UIContext) -> Transition:
         self.pager_actions = compile_actions(PagerWidget.namespace, PagerWidget.actions)
         return super().run(context)
 
@@ -70,7 +71,7 @@ class MessageView(MailActionsMixin, DefaultActionView):
         spans.extend((ui.TextSpan('\n'), ui.TextSpan(self.body)))
         return tuple(spans)
 
-    def draw(self, context: ui.UIContext) -> None:
+    def draw(self, context: UIContext) -> None:
         text = self._pager_text(context.theme.message)
         if not self.pager.text:
             self.pager.text = text
@@ -80,11 +81,11 @@ class MessageView(MailActionsMixin, DefaultActionView):
         if notice:
             ui.status(context.screen, notice, context.theme.status)
 
-    def on_unknown(self, context: ui.UIContext, ch: keys.Key) -> ChangeView | None:
+    def on_unknown(self, context: UIContext, ch: keys.Key) -> Transition | None:
         action = keys.resolve(self.pager_actions, ch)
         return self.pager.handle(context, action, ch)
 
-    def on_open_html(self, _context: ui.UIContext) -> None:
+    def on_open_html(self, _context: UIContext) -> None:
         part = self.message.get_body(preferencelist=('html',))
         if part is None:
             self.notice = 'no HTML part'
@@ -95,10 +96,10 @@ class MessageView(MailActionsMixin, DefaultActionView):
         except Exception as exc:
             self.notice = str(exc)
 
-    def on_toggle_headers(self, _context: ui.UIContext) -> None:
+    def on_toggle_headers(self, _context: UIContext) -> None:
         self.show_all_headers = not self.show_all_headers
         self.pager.text = ''
         self.pager.offset = 0
 
-    def on_parts(self, context: ui.UIContext) -> ChangeView:
-        return ChangeView.push(PartsView(self.message, self.mime))
+    def on_parts(self, context: UIContext) -> Transition:
+        return Transition.push(PartsView(self.message, self.mime))

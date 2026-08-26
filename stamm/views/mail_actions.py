@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from email.message import EmailMessage
 
-from .. import compose, ui
+from .. import compose
 from ..config import config
 from ..state import IndexState
-from . import ChangeView
+from . import Transition, UIContext
 from .compose import ComposeView
 
 
@@ -27,27 +27,27 @@ class MailActionsMixin:
                 notice = f'message sent; cannot mark replied: {exc}'
         self._set_notice(notice, is_sent)
 
-    def _reply(self, all_recipients: bool) -> ChangeView | None:
+    def _reply(self, all_recipients: bool) -> Transition | None:
         selected = self._mail_action_message()
         if selected is None:
             return None
         message, body, key = selected
-        return ChangeView.push(
+        return Transition.push(
             ComposeView(
                 compose.reply(message, body, config, all_recipients=all_recipients),
                 lambda notice, is_sent: self._reply_finished(key, notice, is_sent),
             )
         )
 
-    def on_reply(self, context: ui.UIContext) -> ChangeView | None:
+    def on_reply(self, context: UIContext) -> Transition | None:
         return self._reply(False)
 
-    def on_reply_all(self, context: ui.UIContext) -> ChangeView | None:
+    def on_reply_all(self, context: UIContext) -> Transition | None:
         return self._reply(True)
 
-    def on_forward(self, context: ui.UIContext) -> ChangeView | None:
+    def on_forward(self, context: UIContext) -> Transition | None:
         selected = self._mail_action_message()
         if selected is None:
             return None
         message, body, _key = selected
-        return ChangeView.push(ComposeView.forward(message, body, self._set_notice))
+        return Transition.push(ComposeView.forward(message, body, self._set_notice))

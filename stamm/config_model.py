@@ -12,7 +12,7 @@ from string import Formatter
 from typing import Any, Callable, TypeVar
 
 from .schema import Typ, as_kv, as_list, field, optfield
-from .theme import CursesTheme
+from .theme import Theme
 
 T = TypeVar('T')
 
@@ -116,7 +116,7 @@ def config_from_theme(theme: Any, name: str) -> type[Any]:
     return make_dataclass(name, config_fields, frozen=True)
 
 
-ColorConfig: Any = config_from_theme(CursesTheme, 'ColorConfig')
+ColorConfig: Any = config_from_theme(Theme, 'ColorConfig')
 DEFAULT_COLORS: Any = ColorConfig()
 
 

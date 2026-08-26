@@ -5,13 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from stamm import ui
 from stamm.app import App
 from stamm.config import Config, set_config
 from stamm.config_model import DEFAULT_COLORS, HooksConfig
 from stamm.index import MessageIndex
 from stamm.maildir import ensure_maildir, store
 from stamm.state import MaildirState
+from stamm.theme import Theme
+from stamm.views import UIContext
 
 
 def test_move_to_trash_moves_file_and_removes_index_record(tmp_path: Path) -> None:
@@ -76,8 +77,8 @@ def test_mark_keeps_message_until_purge(tmp_path: Path) -> None:
     set_config(config)
     state = MaildirState.open(inbox)
     state.refresh()
-    theme = ui.CursesTheme()
-    context = ui.UIContext(object(), theme)  # type: ignore[arg-type]
+    theme = Theme()
+    context = UIContext(object(), theme)  # type: ignore[arg-type]
     app = App(context)
     app.maildirs[inbox.resolve()] = state
     view = app.maildir_view(inbox)

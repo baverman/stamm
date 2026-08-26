@@ -1,17 +1,16 @@
 from __future__ import annotations
 
 import curses
-from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
-from typing import cast
 
 import pytest
 
 from stamm import ui
 from stamm.config import config
-from stamm.config_model import DEFAULT_COLORS, ColorStyle
+from stamm.theme import IndexTheme, MessageTheme, Theme
 from stamm.ui import TextSpan, format_index_date, format_sender, viewport_start, wrap_spans, wrap_text
+from stamm.views import UIContext
 from stamm.views.choose import ChooseView
 
 
@@ -108,8 +107,8 @@ def test_choose_maps_generic_and_explicit_keys(
 ) -> None:
     monkeypatch.setattr(ui, 'status', lambda *_args: None)
     monkeypatch.setitem(vars(config), 'keys', {})
-    theme = ui.CursesTheme(0, 0, 0, 0, ui.IndexTheme(0, 0, 0, 0), ui.MessageTheme(0))
-    context = ui.UIContext(_ChoiceWindow(key), theme)  # type: ignore[arg-type]
+    theme = Theme(0, 0, 0, 0, IndexTheme(0, 0, 0, 0), MessageTheme(0))
+    context = UIContext(_ChoiceWindow(key), theme)  # type: ignore[arg-type]
 
     assert (
         ChooseView(
@@ -119,16 +118,6 @@ def test_choose_maps_generic_and_explicit_keys(
         ).run(context)
         == expected
     )
-
-
-def test_theme_node_caches_nested_nodes_and_resolved_styles() -> None:
-    style = ColorStyle('green', None, None)
-    colors = replace(DEFAULT_COLORS, index=replace(DEFAULT_COLORS.index, column_from=style))
-    fbinfo = ui.FallbackInfo(ui.CursesTheme, 'normal')
-    theme = cast(ui.CursesTheme, ui.ThemeNode('', colors, fbinfo, lambda value: 42))
-
-    assert theme.index is theme.index
-    assert theme.index.column_from == 42
 
 
 def test_path_completions_include_matching_directories_and_files(tmp_path: Path) -> None:

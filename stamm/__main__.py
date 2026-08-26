@@ -43,7 +43,7 @@ def main(argv: list[str] | None = None) -> int:
             screen.keypad(True)
 
             theme = ui.initialize_colors(screen, config.colors)
-            context = ui.UIContext(screen, theme)
+            context = views.UIContext(screen, theme)
 
             app = App(context)
             app.open_maildir(selected)

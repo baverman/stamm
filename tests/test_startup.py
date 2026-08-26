@@ -6,10 +6,10 @@ from typing import Any, cast
 
 import pytest
 
-from stamm import ui
 from stamm.index import MessageIndex
 from stamm.maildir import ensure_maildir, store
 from stamm.state import MaildirState
+from stamm.views import UIContext
 from stamm.views.index import IndexView
 
 
@@ -53,7 +53,7 @@ def test_reconcile_paints_index_before_scanning(monkeypatch: pytest.MonkeyPatch)
     state = State([], 0, 0, Path('.'), cast(Any, None), set())
     dependency = cast(Any, None)
     screen = cast(Any, Screen())
-    context = ui.UIContext(screen, dependency)
+    context = UIContext(screen, dependency)
     view = IndexView(state, dependency, dependency, reconcile=True)
     monkeypatch.setattr(view, 'draw', lambda _context: events.append(f'draw:{view.notice}'))
 

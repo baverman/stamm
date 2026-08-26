@@ -5,9 +5,10 @@ from email.message import EmailMessage
 from pathlib import Path
 from typing import ClassVar
 
-from .. import keys, ui
+from .. import ui
 from ..mime import MimeManager, PartRow, part_rows, save_part
-from . import GLOBAL_ACTIONS, MOVE_ACTIONS, DefaultActionView
+from ..tui import keys
+from . import GLOBAL_ACTIONS, MOVE_ACTIONS, DefaultActionView, UIContext
 
 
 @dataclass
@@ -23,7 +24,7 @@ class PartsView(DefaultActionView):
     def __post_init__(self) -> None:
         self.rows = part_rows(self.message)
 
-    def draw(self, context: ui.UIContext) -> None:
+    def draw(self, context: UIContext) -> None:
         screen = context.screen
         screen.erase()
         height, width = screen.getmaxyx()
@@ -36,13 +37,13 @@ class PartsView(DefaultActionView):
         ui.status(screen, self.notice, context.theme.status)
         self.notice = ''
 
-    def on_down(self, context: ui.UIContext) -> None:
+    def on_down(self, context: UIContext) -> None:
         self.selected = min(len(self.rows) - 1, self.selected + 1)
 
-    def on_up(self, context: ui.UIContext) -> None:
+    def on_up(self, context: UIContext) -> None:
         self.selected = max(0, self.selected - 1)
 
-    def on_open(self, context: ui.UIContext) -> None:
+    def on_open(self, context: UIContext) -> None:
         part = self.rows[self.selected].part
         if part.is_multipart():
             return
@@ -52,7 +53,7 @@ class PartsView(DefaultActionView):
         except Exception as exc:
             self.notice = str(exc)
 
-    def on_save(self, context: ui.UIContext) -> None:
+    def on_save(self, context: UIContext) -> None:
         part = self.rows[self.selected].part
         if part.is_multipart():
             return

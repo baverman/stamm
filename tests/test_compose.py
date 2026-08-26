@@ -13,6 +13,7 @@ from stamm import compose, delivery, ui
 from stamm.compose import ComposeData
 from stamm.config import Config, set_config
 from stamm.config_model import DEFAULT_COLORS, HooksConfig
+from stamm.views import UIContext
 from stamm.views.compose import ComposeView
 
 
@@ -107,7 +108,7 @@ def test_successful_send_reports_is_sent(config: Config, monkeypatch: pytest.Mon
     theme = SimpleNamespace(status=0, header=0)
     set_config(config)
     view = ComposeView(data, lambda notice, is_sent: finished.append((notice, is_sent)))
-    context = ui.UIContext(screen, theme)  # type: ignore[arg-type]
+    context = UIContext(screen, theme)  # type: ignore[arg-type]
 
     monkeypatch.setattr(compose_view_module.curses, 'def_prog_mode', lambda: None)
     monkeypatch.setattr(compose_view_module.curses, 'endwin', lambda: None)

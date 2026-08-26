@@ -9,7 +9,7 @@ from typing import Callable
 
 from .. import compose, delivery, ui
 from ..config import config
-from . import ChangeView
+from . import Transition, UIContext
 from .choose import ChooseView
 from .pager import PagerView
 
@@ -46,7 +46,7 @@ class ComposeView:
     def _finish(self, notice: str, is_sent: bool) -> None:
         self.on_finish(notice, is_sent)
 
-    def run(self, context: ui.UIContext) -> ChangeView:
+    def run(self, context: UIContext) -> Transition:
         screen = context.screen
         data = self.data
         edited = False
@@ -62,7 +62,7 @@ class ComposeView:
                     screen.refresh()
                 if not changed and not edited:
                     self._finish('', False)
-                    return ChangeView.close()
+                    return Transition.close()
                 edited = edited or changed
                 errors = compose.validate(data)
                 if errors:
@@ -81,7 +81,7 @@ class ComposeView:
                     continue
                 if action in (None, 'discard'):
                     self._finish('', False)
-                    return ChangeView.close()
+                    return Transition.close()
                 is_sent = False
                 try:
                     if action == 'draft':
@@ -95,7 +95,7 @@ class ComposeView:
                     if self.old_draft:
                         self.old_draft.unlink(missing_ok=True)
                     self._finish(notice, is_sent)
-                    return ChangeView.close()
+                    return Transition.close()
                 except (OSError, delivery.DeliveryError) as exc:
                     PagerView('Delivery failed', str(exc)).run(context)
                     retry = ChooseView(
@@ -113,9 +113,9 @@ class ComposeView:
                             self._finish('draft saved', False)
                         except OSError as draft_exc:
                             self._finish(str(draft_exc), False)
-                        return ChangeView.close()
+                        return Transition.close()
                     self._finish(str(exc), is_sent)
-                    return ChangeView.close()
+                    return Transition.close()
         finally:
             if self.workspace:
                 self.workspace.cleanup()

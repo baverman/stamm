@@ -3,22 +3,21 @@ from __future__ import annotations
 import curses
 from pathlib import Path
 
-from . import ui
 from .config import config
 from .mime import MimeManager
 from .state import MaildirState
-from .views import ChangeView, View
+from .views import Transition, UIContext, View
 from .views.choose import ChooseView
 from .views.index import IndexView
 from .views.pager import PagerView
 
 
 class App:
-    def __init__(self, context: ui.UIContext):
+    def __init__(self, context: UIContext):
         self.context = context
         self.maildirs: dict[Path, MaildirState] = {}
         self.mime = MimeManager(config)
-        self.stack: list[View[ChangeView]] = []
+        self.stack: list[View[Transition]] = []
 
     def maildir_view(self, path: Path) -> IndexView:
         key = path.resolve()
