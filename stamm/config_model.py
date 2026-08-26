@@ -1,5 +1,3 @@
-"""Declarative configuration schema."""
-
 from __future__ import annotations
 
 import fnmatch

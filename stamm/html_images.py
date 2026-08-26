@@ -1,5 +1,3 @@
-"""Prepare images for HTML opened outside the mail client."""
-
 from __future__ import annotations
 
 import logging

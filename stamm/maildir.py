@@ -1,5 +1,3 @@
-"""Maildir enumeration, creation, storage, and flag-safe renames."""
-
 from __future__ import annotations
 
 import errno
@@ -73,7 +71,6 @@ def _unique_name() -> str:
 
 
 def move(source_maildir: Path, relative_path: str, destination_maildir: Path) -> Path:
-    """Move one message to another Maildir, including across filesystems."""
     ensure_maildir(destination_maildir)
     source = source_maildir / relative_path
     subdirectory = source.parent.name
@@ -103,7 +100,6 @@ def move(source_maildir: Path, relative_path: str, destination_maildir: Path) ->
 
 
 def store(maildir: Path, content: bytes, *, flags: str = '', seen: bool = False) -> Path:
-    """Atomically store complete message bytes and return the final path."""
     ensure_maildir(maildir)
     name = _unique_name()
     temporary = maildir / 'tmp' / name

@@ -1,5 +1,3 @@
-"""Header-based thread graph construction."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -22,7 +20,6 @@ class ThreadRow:
 
 
 def build_threads(messages: list[IndexedMessage]) -> list[ThreadRow]:
-    """Return all visible messages in root-freshness and tree order."""
     nodes: dict[str, _Node] = {}
     anonymous: list[_Node] = []
     current_nodes: list[_Node] = []

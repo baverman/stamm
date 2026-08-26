@@ -1,5 +1,3 @@
-"""Maildir-local SQLite message metadata index."""
-
 from __future__ import annotations
 
 import json
@@ -176,7 +174,6 @@ class MessageIndex:
         return replace(item, path=path, flags=flags)
 
     def move_to(self, key: str, destination: Path) -> Path:
-        """Move an indexed message to another Maildir and remove its record."""
         if self.maildir.resolve() == destination.resolve():
             raise ValueError('message is already in the destination Maildir')
         item = self.get(key)

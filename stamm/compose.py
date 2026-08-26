@@ -1,5 +1,3 @@
-"""Composition buffers, validation, and reply/forward preparation."""
-
 from __future__ import annotations
 
 import mimetypes
@@ -47,7 +45,6 @@ def _valid_addresses(value: str) -> bool:
 
 
 def parse_buffer(text: str) -> ComposeData:
-    """Parse the editable format. Headers end at the first empty line."""
     lines = text.splitlines()
     values = {name: '' for name in HEADERS}
     attachments: list[Attachment] = []
@@ -123,7 +120,6 @@ def validate(data: ComposeData) -> list[str]:
 
 
 def edit(config: Config, initial: ComposeData, errors: list[str] | None = None) -> tuple[ComposeData, bool]:
-    """Run the configured editor once and report whether its buffer changed."""
     content = format_buffer(initial)
     if errors:
         content = '# ' + '\n# '.join(errors) + '\n' + content

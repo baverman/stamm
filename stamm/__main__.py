@@ -37,7 +37,6 @@ def main(argv: list[str] | None = None) -> int:
     try:
         views.setup()
         set_config(load_config())
-        # CLI paths are intentionally not expanded by Stamm.
         selected = args.maildir if args.maildir is not None else config.spool
 
         def run(screen: curses.window) -> None:

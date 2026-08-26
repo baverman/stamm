@@ -1,5 +1,3 @@
-"""MIME filtering, opening, tree display, and saving."""
-
 from __future__ import annotations
 
 import logging

@@ -1,5 +1,3 @@
-"""Parse and evaluate message index search queries."""
-
 from __future__ import annotations
 
 import shlex
@@ -17,7 +15,6 @@ class SearchTerm:
 
 
 def parse_query(query: str) -> list[SearchTerm]:
-    """Parse whitespace-separated ``field:value`` search terms."""
     try:
         tokens = shlex.split(query)
     except ValueError as exc:
@@ -35,6 +32,5 @@ def parse_query(query: str) -> list[SearchTerm]:
 
 
 def matches(message: IndexedMessage, terms: list[SearchTerm]) -> bool:
-    """Return whether all terms occur in their message fields."""
     values = {'from': message.sender.casefold(), 'subject': message.subject.casefold()}
     return all(term.value.casefold() in values[term.field] for term in terms)

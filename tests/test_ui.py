@@ -57,9 +57,7 @@ def test_viewport_is_clamped_at_list_edges() -> None:
 
 
 def test_final_message_keeps_the_bottom_scroll_margin() -> None:
-    # Twenty visible rows produce a six-row margin.
     assert viewport_start(99, 100, 20, 0) == 86
-    # The margin is capped at ten on large screens.
     assert viewport_start(199, 200, 100, 0) == 110
 
 

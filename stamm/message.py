@@ -1,5 +1,3 @@
-"""Message parsing, MIME selection, and text rendering."""
-
 from __future__ import annotations
 
 from email import policy

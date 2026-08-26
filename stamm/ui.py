@@ -1,5 +1,3 @@
-"""Small curses drawing, pager, prompt, and completion helpers."""
-
 from __future__ import annotations
 
 import curses
@@ -18,7 +16,6 @@ MONTHS = ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 
 
 
 def format_index_date(timestamp: float, now: float | None = None) -> str:
-    """Format an index date in a fixed 12-character field."""
     current = time.time() if now is None else now
     value = datetime.fromtimestamp(timestamp).astimezone()
     month = MONTHS[value.month - 1]
@@ -28,13 +25,11 @@ def format_index_date(timestamp: float, now: float | None = None) -> str:
 
 
 def format_sender(value: str) -> str:
-    """Show the display name when present, otherwise show the address."""
     name, address = parseaddr(value.replace('\n', ' '))
     return name or address or value.replace('\n', ' ')
 
 
 def viewport_start(selected: int, total: int, visible: int, current: int) -> int:
-    """Keep the cursor inside a 30% scroll margin, capped at 10 rows."""
     if total <= visible:
         return 0
     margin = min(10, int(visible * 0.3), max(0, (visible - 1) // 2))

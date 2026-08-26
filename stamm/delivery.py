@@ -1,5 +1,3 @@
-"""MIME generation, drafts, signatures, and sendmail delivery."""
-
 from __future__ import annotations
 
 import io
@@ -77,7 +75,6 @@ def save_draft(data: ComposeData, config: Config) -> Path:
 
 
 def envelope(data: ComposeData) -> tuple[str, list[str]]:
-    """Return the validated envelope sender and de-duplicated recipients."""
     sender = parseaddr(data.sender)[1]
     if not sender:
         raise DeliveryError('message has no envelope sender')

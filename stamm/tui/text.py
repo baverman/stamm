@@ -73,7 +73,6 @@ def fit_text(value: str, width: int) -> tuple[str, str, int]:
 
 
 def wrap_text(text: str, columns: int) -> list[str]:
-    """Wrap text to terminal cell width while preserving whitespace."""
     columns = max(1, columns)
     result: list[str] = []
     for source in text.splitlines() or ['']:

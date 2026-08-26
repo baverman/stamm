@@ -1,5 +1,3 @@
-"""Configuration loading and path resolution."""
-
 from __future__ import annotations
 
 import os
@@ -21,7 +19,7 @@ def set_config(value: Config) -> None:
 
 
 class ConfigError(ValueError):
-    """An invalid Stamm configuration."""
+    pass
 
 
 def expand_path(value: Path, base: Path | None = None) -> Path:
@@ -38,7 +36,6 @@ def config_candidates() -> list[Path]:
 
 
 def load_config(path: Path | None = None) -> Config:
-    """Load the first available configuration file, or *path*."""
     if path is None:
         path = next((item for item in config_candidates() if item.is_file()), None)
     if path is None:
