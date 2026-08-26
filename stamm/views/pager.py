@@ -29,4 +29,7 @@ class PagerView(DefaultActionView):
         window.refresh()
 
     def on_unknown(self, context: UIContext, ch: keys.Key) -> Transition | None:
-        return self.pager.handle_key(context, ch)
+        height, width = context.screen.getmaxyx()
+        if height <= 1:
+            return None
+        return self.pager.handle_key(context.subcontext(height - 1, width, 1, 0), ch)

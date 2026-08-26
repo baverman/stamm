@@ -10,8 +10,6 @@ from .views import BaseContext
 class PagerWidget:
     lines: text.TextLines
     offset: int = field(default=0, init=False)
-    visible: int = field(default=1, init=False)
-    maximum: int = field(default=0, init=False)
     _cached_lines: tuple[int, object, list[list[text.TextSpan]] | None] = (0, None, None)
 
     def get_lines(self, width: int) -> list[list[text.TextSpan]]:
@@ -21,15 +19,20 @@ class PagerWidget:
             self._cached_lines = width, self.lines, wrapped
         return wrapped
 
+    def _scroll_bounds(self, context: BaseContext) -> tuple[int, int]:
+        height, width = context.screen.getmaxyx()
+        page_size = max(1, height)
+        return page_size, max(0, len(self.get_lines(width)) - page_size)
+
     def draw(self, context: BaseContext) -> None:
         window = context.screen
         window.erase()
         height, width = window.getmaxyx()
         lines = self.get_lines(width)
-        self.visible = max(1, height)
-        self.maximum = max(0, len(lines) - self.visible)
-        self.offset = min(self.offset, self.maximum)
-        for row, line in enumerate(lines[self.offset : self.offset + self.visible]):
+        page_size = max(1, height)
+        max_offset = max(0, len(lines) - page_size)
+        self.offset = min(self.offset, max_offset)
+        for row, line in enumerate(lines[self.offset : self.offset + page_size]):
             x = 0
             for item in line:
                 text.put(window, row, x, item.text, max(0, width - x), item.attr)
@@ -37,19 +40,23 @@ class PagerWidget:
         window.refresh()
 
     def on_down(self, context: BaseContext) -> None:
-        self.offset = min(self.maximum, self.offset + 1)
+        _page_size, max_offset = self._scroll_bounds(context)
+        self.offset = min(max_offset, self.offset + 1)
 
     def on_up(self, context: BaseContext) -> None:
         self.offset = max(0, self.offset - 1)
 
     def on_pageup(self, context: BaseContext) -> None:
-        self.offset = max(0, self.offset - self.visible)
+        page_size, _max_offset = self._scroll_bounds(context)
+        self.offset = max(0, self.offset - page_size)
 
     def on_pagedown(self, context: BaseContext) -> None:
-        self.offset = min(self.maximum, self.offset + self.visible)
+        page_size, max_offset = self._scroll_bounds(context)
+        self.offset = min(max_offset, self.offset + page_size)
 
     def on_home(self, context: BaseContext) -> None:
         self.offset = 0
 
     def on_end(self, context: BaseContext) -> None:
-        self.offset = self.maximum
+        _page_size, max_offset = self._scroll_bounds(context)
+        self.offset = max_offset

@@ -83,7 +83,10 @@ class MessageView(MailActionsMixin, DefaultActionView):
             ui.status(window, notice, context.theme.status)
 
     def on_unknown(self, context: UIContext, ch: keys.Key) -> Transition | None:
-        return self.pager.handle_key(context, ch)
+        height, width = context.screen.getmaxyx()
+        if height <= 1:
+            return None
+        return self.pager.handle_key(context.subcontext(height - 1, width, 1, 0), ch)
 
     def on_open_html(self, _context: UIContext) -> None:
         part = self.message.get_body(preferencelist=('html',))
