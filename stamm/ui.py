@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from .theme import Theme as Theme
+from .tui.compat import cache
 from .tui.theme import FallbackInfo, Style, ThemeNode
 
 MONTHS = ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')
@@ -47,7 +48,12 @@ COLOR_ATTRIBUTES = {
 @dataclass(frozen=True, slots=True)
 class TextSpan:
     text: str
-    attr: int = 0
+    attr: int
+    width: int
+
+
+def span(text: str, attr: int = 0) -> TextSpan:
+    return TextSpan(text, attr, text_width(text))
 
 
 def _color_index(value: str) -> int:
@@ -147,11 +153,7 @@ def wrap_text(text: str, columns: int) -> list[str]:
         chunk: list[str] = []
         used = 0
         for character in source:
-            cell_width = (
-                0
-                if unicodedata.combining(character)
-                else (2 if unicodedata.east_asian_width(character) in ('W', 'F') else 1)
-            )
+            cell_width = _character_width(character)
             if chunk and used + cell_width > columns:
                 result.append(''.join(chunk))
                 chunk = []
@@ -167,28 +169,37 @@ def wrap_spans(spans: Sequence[TextSpan], columns: int) -> list[list[TextSpan]]:
     result: list[list[TextSpan]] = [[]]
     used = 0
     source_column = 0
+    buffer: list[str] = []
+    buffer_attr = 0
+    buffer_width = 0
     ended_with_newline = False
 
+    def flush() -> None:
+        nonlocal buffer_width
+        if buffer:
+            result[-1].append(TextSpan(''.join(buffer), buffer_attr, buffer_width))
+            buffer.clear()
+            buffer_width = 0
+
     def append(character: str, attr: int) -> None:
-        nonlocal used
-        cell_width = (
-            0
-            if unicodedata.combining(character)
-            else (2 if unicodedata.east_asian_width(character) in ('W', 'F') else 1)
-        )
-        if result[-1] and used + cell_width > columns:
+        nonlocal buffer_attr, buffer_width, used
+        cell_width = _character_width(character)
+        if buffer and buffer_attr != attr:
+            flush()
+        if (buffer or result[-1]) and used + cell_width > columns:
+            flush()
             result.append([])
             used = 0
-        row = result[-1]
-        if row and row[-1].attr == attr:
-            row[-1] = TextSpan(row[-1].text + character, attr)
-        else:
-            row.append(TextSpan(character, attr))
+        if not buffer:
+            buffer_attr = attr
+        buffer.append(character)
+        buffer_width += cell_width
         used += cell_width
 
     for span in spans:
         for character in span.text.replace('\r\n', '\n').replace('\r', '\n'):
             if character == '\n':
+                flush()
                 result.append([])
                 used = 0
                 source_column = 0
@@ -203,6 +214,7 @@ def wrap_spans(spans: Sequence[TextSpan], columns: int) -> list[list[TextSpan]]:
             else:
                 append(character, span.attr)
                 source_column += 1
+    flush()
     if ended_with_newline:
         result.pop()
     return result
@@ -232,6 +244,7 @@ class Completion:
 Completer = Callable[[str, int], Sequence[Completion | str]]
 
 
+@cache
 def _character_width(character: str) -> int:
     if unicodedata.combining(character):
         return 0

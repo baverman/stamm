@@ -13,7 +13,6 @@ class PagerWidget(ActionHandler[None]):
     namespace: ClassVar[str] = 'pager'
     actions: ClassVar[keys.ActionSet] = MOVE_ACTIONS | PAGE_ACTIONS
 
-    title: str
     text: str | tuple[ui.TextSpan, ...]
     offset: int = field(default=0, init=False)
     visible: int = field(default=1, init=False)
@@ -23,7 +22,7 @@ class PagerWidget(ActionHandler[None]):
     def get_lines(self, width: int) -> list[list[ui.TextSpan]]:
         oldw, oldobj, lines = self._cached_lines
         if lines is None or oldw != width or oldobj is not self.text:
-            spans = (ui.TextSpan(self.text),) if isinstance(self.text, str) else self.text
+            spans = (ui.span(self.text),) if isinstance(self.text, str) else self.text
             lines = ui.wrap_spans(spans, width - 1)
             self._cached_lines = width, self.text, lines
         else:
@@ -35,15 +34,14 @@ class PagerWidget(ActionHandler[None]):
         window.erase()
         height, width = window.getmaxyx()
         lines = self.get_lines(width)
-        self.visible = max(1, height - 1)
+        self.visible = max(1, height)
         self.maximum = max(0, len(lines) - self.visible)
         self.offset = min(self.offset, self.maximum)
-        ui.put(window, 0, 0, self.title.ljust(width), width, context.theme.header)
-        for row, line in enumerate(lines[self.offset : self.offset + self.visible], 1):
+        for row, line in enumerate(lines[self.offset : self.offset + self.visible]):
             x = 0
             for span in line:
                 ui.put(window, row, x, span.text, max(0, width - 1 - x), span.attr)
-                x += ui.text_width(span.text)
+                x += span.width
         window.refresh()
 
     def on_down(self, context: UIContext) -> None:
@@ -67,3 +65,16 @@ class PagerWidget(ActionHandler[None]):
 
 class PagerView(PagerWidget, DefaultActionView):
     actions: ClassVar[keys.ActionSet] = GLOBAL_ACTIONS | PagerWidget.actions
+
+    def __init__(self, title: str, text: str | tuple[ui.TextSpan, ...]) -> None:
+        super().__init__(text)
+        self.title = title
+
+    def draw(self, context: UIContext) -> None:
+        window = context.screen
+        window.erase()
+        height, width = window.getmaxyx()
+        ui.put(window, 0, 0, self.title.ljust(width), width, context.theme.header)
+        if height > 1:
+            super().draw(context.subcontext(height - 1, width, 1, 0))
+        window.refresh()

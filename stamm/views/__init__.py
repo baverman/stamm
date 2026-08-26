@@ -36,6 +36,9 @@ class UIContext(views.Context[Theme]):
     screen: curses.window
     theme: Theme
 
+    def subcontext(self, height: int, width: int, y: int, x: int) -> UIContext:
+        return UIContext(self.screen.derwin(height, width, y, x), self.theme)
+
 
 Transition = views.Transition[UIContext]
 type View[T] = views.View[UIContext, T]

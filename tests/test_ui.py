@@ -9,7 +9,7 @@ import pytest
 from stamm import ui
 from stamm.config import config
 from stamm.theme import IndexTheme, MessageTheme, Theme
-from stamm.ui import TextSpan, format_index_date, format_sender, viewport_start, wrap_spans, wrap_text
+from stamm.ui import format_index_date, format_sender, span, viewport_start, wrap_spans, wrap_text
 from stamm.views import UIContext
 from stamm.views.choose import ChooseView
 
@@ -49,11 +49,11 @@ def test_wrap_text(text: str, width: int, expected: list[str]) -> None:
 
 
 def test_wrap_spans_preserves_attributes_across_rows() -> None:
-    spans = (TextSpan('From:', 1), TextSpan(' Alice', 0))
+    spans = (span('From:', 1), span(' Alice'))
 
     assert wrap_spans(spans, 7) == [
-        [TextSpan('From:', 1), TextSpan(' A', 0)],
-        [TextSpan('lice', 0)],
+        [span('From:', 1), span(' A')],
+        [span('lice')],
     ]
 
 

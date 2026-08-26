@@ -38,7 +38,7 @@ class MessageView(MailActionsMixin, DefaultActionView):
     pager_actions: keys.Bindings = field(init=False)
 
     def __post_init__(self) -> None:
-        self.pager = PagerWidget(self.message.get('Subject', ''), '')
+        self.pager = PagerWidget('')
 
     def run(self, context: UIContext) -> Transition:
         self.pager_actions = compile_actions(PagerWidget.namespace, PagerWidget.actions)
@@ -67,19 +67,25 @@ class MessageView(MailActionsMixin, DefaultActionView):
                 attr = theme.header
             lines = value.replace('\r\n', '\n').replace('\r', '\n').split('\n')
             text = f'{name}: {lines[0]}\n' + ''.join(f'    {line.lstrip()}\n' for line in lines[1:])
-            spans.append(ui.TextSpan(text, attr))
-        spans.extend((ui.TextSpan('\n'), ui.TextSpan(self.body)))
+            spans.append(ui.span(text, attr))
+        spans.extend((ui.span('\n'), ui.span(self.body)))
         return tuple(spans)
 
     def draw(self, context: UIContext) -> None:
+        window = context.screen
+        window.erase()
+        height, width = window.getmaxyx()
+        ui.put(window, 0, 0, self.message.get('Subject', '').ljust(width), width, context.theme.header)
         text = self._pager_text(context.theme.message)
         if not self.pager.text:
             self.pager.text = text
         notice = self.notice
         self.notice = ''
-        self.pager.draw(context)
+        if height > 1:
+            self.pager.draw(context.subcontext(height - 1, width, 1, 0))
+        window.refresh()
         if notice:
-            ui.status(context.screen, notice, context.theme.status)
+            ui.status(window, notice, context.theme.status)
 
     def on_unknown(self, context: UIContext, ch: keys.Key) -> Transition | None:
         action = keys.resolve(self.pager_actions, ch)
