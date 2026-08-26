@@ -12,6 +12,7 @@ from stamm.theme import IndexTheme, MessageTheme, Theme
 from stamm.ui import format_index_date, format_sender, viewport_start
 from stamm.views import UIContext
 from stamm.views.choose import ChooseView
+from tests.tui.fakes import Window
 
 
 def test_recent_date_uses_time() -> None:
@@ -61,14 +62,6 @@ def test_final_message_keeps_the_bottom_scroll_margin() -> None:
     assert viewport_start(199, 200, 100, 0) == 110
 
 
-class _ChoiceWindow:
-    def __init__(self, key: str | int):
-        self.key = key
-
-    def get_wch(self) -> str | int:
-        return self.key
-
-
 @pytest.mark.parametrize(
     ('key', 'expected'),
     [
@@ -85,7 +78,7 @@ def test_choose_maps_generic_and_explicit_keys(
     monkeypatch.setattr(ui, 'status', lambda *_args: None)
     monkeypatch.setitem(vars(config), 'keys', {})
     theme = Theme(0, 0, 0, 0, IndexTheme(0, 0, 0, 0), MessageTheme(0))
-    context = UIContext(_ChoiceWindow(key), theme)  # type: ignore[arg-type]
+    context = UIContext(Window(keys=[key]).as_curses(), theme)
 
     assert (
         ChooseView(
@@ -107,39 +100,19 @@ def test_path_completions_include_matching_directories_and_files(tmp_path: Path)
     assert ui._path_completions(str(tmp_path / 'mail')) == [str(file), str(directory) + '/']
 
 
-class _PromptWindow:
-    def __init__(self, keys: list[str | int]):
-        self.keys = iter(keys)
-
-    def getmaxyx(self) -> tuple[int, int]:
-        return 12, 80
-
-    def addnstr(self, *_args: object) -> None:
-        pass
-
-    def move(self, *_args: object) -> None:
-        pass
-
-    def refresh(self) -> None:
-        pass
-
-    def get_wch(self) -> str | int:
-        return next(self.keys)
-
-
 def test_prompt_edits_at_cursor(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(curses, 'curs_set', lambda _visibility: 0)
-    window = _PromptWindow([curses.KEY_LEFT, 'b', '\n'])
+    window = Window(keys=[curses.KEY_LEFT, 'b', '\n'])
 
-    assert ui.prompt(window, '> ', 'ac', status_attr=0) == 'abc'  # type: ignore[arg-type]
+    assert ui.prompt(window.as_curses(), '> ', 'ac', status_attr=0) == 'abc'
 
 
 def test_prompt_navigates_completion_choices(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(curses, 'curs_set', lambda _visibility: 0)
-    window = _PromptWindow(['\t', curses.KEY_DOWN, '\n'])
+    window = Window(keys=['\t', curses.KEY_DOWN, '\n'])
 
     value = ui.prompt(
-        window,  # type: ignore[arg-type]
+        window.as_curses(),
         '> ',
         completer=lambda _value, _cursor: [ui.Completion('first'), ui.Completion('second')],
         status_attr=0,
@@ -156,44 +129,44 @@ def test_prompt_completes_common_prefix_and_supports_j_navigation(monkeypatch: p
         completed_values.append(value)
         return [ui.Completion('alpha'), ui.Completion('alpine')]
 
-    window = _PromptWindow(['\t', 'j', '\n'])
+    window = Window(keys=['\t', 'j', '\n'])
 
-    assert ui.prompt(window, '> ', completer=complete, status_attr=0) == 'alpine'  # type: ignore[arg-type]
+    assert ui.prompt(window.as_curses(), '> ', completer=complete, status_attr=0) == 'alpine'
     assert completed_values == ['', 'alp']
 
 
 def test_repeated_tab_selects_next_without_applying_completion(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(curses, 'curs_set', lambda _visibility: 0)
     choices = [ui.Completion('draft'), ui.Completion('drafts')]
-    window = _PromptWindow(['\t', '\t', '\n'])
+    window = Window(keys=['\t', '\t', '\n'])
 
-    assert ui.prompt(window, '> ', completer=lambda _value, _cursor: choices, status_attr=0) == 'drafts'  # type: ignore[arg-type]
+    assert ui.prompt(window.as_curses(), '> ', completer=lambda _value, _cursor: choices, status_attr=0) == 'drafts'
 
 
 def test_prompt_accepts_numeric_tab_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(curses, 'curs_set', lambda _visibility: 0)
-    window = _PromptWindow(['s', 'e', 9, '\n'])
+    window = Window(keys=['s', 'e', 9, '\n'])
 
     def complete(value: str, _cursor: int) -> list[ui.Completion]:
         return [] if ' ' in value else [ui.Completion('search ', accept=False)]
 
-    assert ui.prompt(window, ':', completer=complete, status_attr=0) == 'search '  # type: ignore[arg-type]
+    assert ui.prompt(window.as_curses(), ':', completer=complete, status_attr=0) == 'search '
 
 
 def test_prompt_page_navigation_scrolls_completion_menu(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(curses, 'curs_set', lambda _visibility: 0)
-    window = _PromptWindow(['\t', curses.KEY_NPAGE, '\n'])
+    window = Window(keys=['\t', curses.KEY_NPAGE, '\n'])
     choices = [ui.Completion(str(index)) for index in range(12)]
 
-    assert ui.prompt(window, '> ', completer=lambda _value, _cursor: choices, status_attr=0) == '8'  # type: ignore[arg-type]
+    assert ui.prompt(window.as_curses(), '> ', completer=lambda _value, _cursor: choices, status_attr=0) == '8'
 
 
 def test_prompt_navigates_history(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(curses, 'curs_set', lambda _visibility: 0)
     history = ['first', 'second']
-    window = _PromptWindow([curses.KEY_UP, '\n'])
+    window = Window(keys=[curses.KEY_UP, '\n'])
 
-    assert ui.prompt(window, '> ', history=history, status_attr=0) == 'second'  # type: ignore[arg-type]
+    assert ui.prompt(window.as_curses(), '> ', history=history, status_attr=0) == 'second'
 
 
 def test_maildir_completer_only_returns_directories(tmp_path: Path) -> None:
@@ -217,11 +190,11 @@ def test_prompt_completes_one_maildir_without_entering_it(tmp_path: Path, monkey
     (maildir / 'cur').mkdir(parents=True)
     (maildir / 'new').mkdir()
     initial = str(tmp_path / 'In')
-    window = _PromptWindow(['\t', '\n'])
+    window = Window(keys=['\t', '\n'])
 
     assert (
         ui.prompt(
-            window,  # type: ignore[arg-type]
+            window.as_curses(),
             'Maildir: ',
             initial,
             complete_paths=True,

@@ -1,0 +1,56 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any
+
+from . import text
+from .views import Context
+
+
+@dataclass
+class PagerWidget[C: Context[Any]]:
+    lines: text.TextLines
+    offset: int = field(default=0, init=False)
+    visible: int = field(default=1, init=False)
+    maximum: int = field(default=0, init=False)
+    _cached_lines: tuple[int, object, list[list[text.TextSpan]] | None] = (0, None, None)
+
+    def get_lines(self, width: int) -> list[list[text.TextSpan]]:
+        old_width, old_lines, wrapped = self._cached_lines
+        if wrapped is None or old_width != width or old_lines is not self.lines:
+            wrapped = text.wrap_spans(self.lines, width)
+            self._cached_lines = width, self.lines, wrapped
+        return wrapped
+
+    def draw(self, context: C) -> None:
+        window = context.screen
+        window.erase()
+        height, width = window.getmaxyx()
+        lines = self.get_lines(width)
+        self.visible = max(1, height)
+        self.maximum = max(0, len(lines) - self.visible)
+        self.offset = min(self.offset, self.maximum)
+        for row, line in enumerate(lines[self.offset : self.offset + self.visible]):
+            x = 0
+            for item in line:
+                text.put(window, row, x, item.text, max(0, width - x), item.attr)
+                x += item.width
+        window.refresh()
+
+    def on_down(self, context: C) -> None:
+        self.offset = min(self.maximum, self.offset + 1)
+
+    def on_up(self, context: C) -> None:
+        self.offset = max(0, self.offset - 1)
+
+    def on_pageup(self, context: C) -> None:
+        self.offset = max(0, self.offset - self.visible)
+
+    def on_pagedown(self, context: C) -> None:
+        self.offset = min(self.maximum, self.offset + self.visible)
+
+    def on_home(self, context: C) -> None:
+        self.offset = 0
+
+    def on_end(self, context: C) -> None:
+        self.offset = self.maximum
