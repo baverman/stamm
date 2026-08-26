@@ -30,7 +30,7 @@ def expand_path(value: Path, base: Path | None = None) -> Path:
 
 
 def config_candidates() -> list[Path]:
-    paths = [Path.cwd() / 'stamm.toml']
+    paths = []
     if xdg := os.environ.get('XDG_CONFIG_HOME'):
         paths.append(Path(xdg) / 'stamm.toml')
     paths.append(Path.home() / '.config' / 'stamm.toml')

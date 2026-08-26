@@ -81,12 +81,16 @@ def initialize_colors(window: curses.window, colors: Any) -> CursesTheme:
         except curses.error as exc:
             raise RuntimeError(f'cannot initialize terminal colors: {exc}') from exc
 
+    def fit_color(value: str) -> int:
+        index = _color_index(value)
+        return index % curses.COLORS if index >= 0 else index
+
     def alloc_color(style: Style) -> int:
         nonlocal next_pair
         result = _attributes(style.attrs or ())
         if not has_colors:
             return result
-        colors_key = (_color_index(style.fg or 'default'), _color_index(style.bg or 'default'))
+        colors_key = (fit_color(style.fg or 'default'), fit_color(style.bg or 'default'))
         pair = pairs.get(colors_key)
         if pair is None:
             if next_pair >= curses.COLOR_PAIRS:

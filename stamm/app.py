@@ -57,7 +57,8 @@ class App:
     def run(self) -> None:
         screen = self.context.screen
         screen.keypad(True)
-        curses.curs_set(0)
+        if curses.tigetstr('civis') is not None:
+            curses.curs_set(0)
         try:
             while self.stack:
                 self.mime.reap()
