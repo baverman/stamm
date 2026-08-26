@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import curses
-from abc import abstractmethod
+from abc import abstractmethod, abstractproperty
 from dataclasses import dataclass
 from typing import Any, Callable, ClassVar, Literal, Protocol, Self, cast
 
@@ -50,6 +50,9 @@ class ActionSpec:
     actions: ClassVar[keys.ActionSet]
 
 
+ActionResolver = Callable[[keys.Key], str | None]
+
+
 class ActionHandler[C: Context[Any], T](ActionSpec):
     actions = {}
 
@@ -59,10 +62,18 @@ class ActionHandler[C: Context[Any], T](ActionSpec):
         if missing:
             raise TypeError(f'{cls.__name__} is missing action handlers: {", ".join(missing)}')
 
-    def handle(self, context: C, action: str | None, ch: keys.Key) -> T | None:
-        if action is None:
-            return self.on_unknown(context, ch)
+    @abstractproperty
+    def action_resolver(self) -> ActionResolver: ...
+
+    def handle(self, context: C, action: str) -> T | None:
         return cast(Callable[[C], T | None], getattr(self, f'on_{action}'))(context)
+
+    def handle_key(self, context: C, ch: keys.Key) -> T | None:
+        action = self.action_resolver(ch)
+        if action:
+            return self.handle(context, action)
+        else:
+            return self.on_unknown(context, ch)
 
     def on_unknown(self, context: C, ch: keys.Key) -> T | None:
         return None
@@ -72,14 +83,9 @@ class ActionView[C: Context[Any], T](View[C, T], ActionHandler[C, T]):
     @abstractmethod
     def draw(self, context: C) -> None: ...
 
-    @abstractmethod
-    def get_bindings(self) -> keys.Bindings: ...
-
     def run(self, context: C) -> T:
-        bindings = self.get_bindings()
         while True:
             self.draw(context)
-            action, ch = keys.read(context.screen, bindings)
-            result = self.handle(context, action, ch)
+            result = self.handle_key(context, context.screen.get_wch())
             if result is not None:
                 return result

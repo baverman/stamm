@@ -9,7 +9,7 @@ from ..mime import MimeManager
 from ..state import IndexState
 from ..theme import MessageTheme
 from ..tui import keys
-from . import GLOBAL_ACTIONS, MAIL_ACTIONS, DefaultActionView, Transition, UIContext, compile_actions
+from . import GLOBAL_ACTIONS, MAIL_ACTIONS, DefaultActionView, Transition, UIContext
 from .mail_actions import MailActionsMixin
 from .pager import PagerWidget
 from .parts import PartsView
@@ -35,14 +35,9 @@ class MessageView(MailActionsMixin, DefaultActionView):
     notice: str = field(default='', init=False)
     show_all_headers: bool = field(default=False, init=False)
     pager: PagerWidget = field(init=False)
-    pager_actions: keys.Bindings = field(init=False)
 
     def __post_init__(self) -> None:
         self.pager = PagerWidget('')
-
-    def run(self, context: UIContext) -> Transition:
-        self.pager_actions = compile_actions(PagerWidget.namespace, PagerWidget.actions)
-        return super().run(context)
 
     def _set_notice(self, notice: str, _is_sent: bool) -> None:
         self.notice = notice
@@ -88,8 +83,7 @@ class MessageView(MailActionsMixin, DefaultActionView):
             ui.status(window, notice, context.theme.status)
 
     def on_unknown(self, context: UIContext, ch: keys.Key) -> Transition | None:
-        action = keys.resolve(self.pager_actions, ch)
-        return self.pager.handle(context, action, ch)
+        return self.pager.handle_key(context, ch)
 
     def on_open_html(self, _context: UIContext) -> None:
         part = self.message.get_body(preferencelist=('html',))

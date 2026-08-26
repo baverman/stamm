@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import curses
 from dataclasses import dataclass
+from functools import cached_property
 
 from ..config import config, update_known_actions
 from ..theme import Theme
@@ -44,12 +45,14 @@ Transition = views.Transition[UIContext]
 type View[T] = views.View[UIContext, T]
 
 
-class ActionView[T](views.ActionView[UIContext, T]):
-    def get_bindings(self) -> keys.Bindings:
-        return compile_actions(self.namespace, self.actions)
+class ActionHandler[T](views.ActionHandler[UIContext, T]):
+    @cached_property
+    def action_resolver(self) -> views.ActionResolver:
+        binds = compile_actions(self.namespace, self.actions)
+        return binds.get
 
 
-class ActionHandler[T](views.ActionHandler[UIContext, T]): ...
+class ActionView[T](ActionHandler[T], views.ActionView[UIContext, T]): ...
 
 
 class DefaultActionView(ActionView[Transition]):
