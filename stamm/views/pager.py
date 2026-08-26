@@ -19,6 +19,9 @@ class PagerView(DefaultActionView):
         self.title = title
         self.pager = PagerWidget(lines)
 
+    def help_action_sets(self) -> tuple[tuple[str, keys.ActionSet], ...]:
+        return super().help_action_sets() + ((PagerWidget.namespace, PagerWidget.actions),)
+
     def draw(self, context: UIContext) -> None:
         window = context.screen
         window.erase()

@@ -17,6 +17,8 @@ Available fields are `date`, `flags`, `sender`, and `subject`. A numeric width i
 
 Input bindings use namespaced TOML tables and the `key = action` format. Configured entries override defaults, while an empty action removes a default binding:
 
+Press `?` in a top-level view to show its active key bindings and actions. The key uses the configurable `help` action.
+
 ```toml
 [keys.index]
 j = "down"

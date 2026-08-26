@@ -39,6 +39,16 @@ def test_compile_merges_and_unbinds() -> None:
     assert bindings == {'k': 'up', '\x04': 'down', '\x0e': 'down'}
 
 
+def test_describe_bindings_shows_effective_keys_by_action() -> None:
+    descriptions = keys.describe_bindings(
+        'view',
+        {'down': ('j', 'DOWN'), 'up': ('k',), 'help': ('?',)},
+        {'j': 'up', 'DOWN': '', '^N': 'down', '?': ''},
+    )
+
+    assert descriptions == [('^N', 'down'), ('j, k', 'up')]
+
+
 def test_resolve_returns_none_for_unbound_event() -> None:
     assert keys.resolve({'j': 'down'}, 'j') == 'down'
     assert keys.resolve({'j': 'down'}, curses.KEY_UP) is None

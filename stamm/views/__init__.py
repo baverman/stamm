@@ -6,10 +6,11 @@ from functools import cached_property
 
 from ..config import config, update_known_actions
 from ..theme import Theme
-from ..tui import keys, views
+from ..tui import keys, text, views
 
 GLOBAL_ACTIONS: keys.ActionSet = {
     'back': ('q',),
+    'help': ('?',),
 }
 
 MOVE_ACTIONS: keys.ActionSet = {
@@ -56,8 +57,23 @@ class ActionView[T](ActionHandler[T], views.ActionView[UIContext, T]): ...
 
 
 class DefaultActionView(ActionView[Transition]):
+    def help_action_sets(self) -> tuple[tuple[str, keys.ActionSet], ...]:
+        return ((self.namespace, self.actions),)
+
     def on_back(self, context: UIContext) -> Transition | None:
         return Transition.close()
+
+    def on_help(self, context: UIContext) -> Transition:
+        from .pager import PagerView
+
+        bindings = keys.describe_binding_sets(
+            tuple(
+                (namespace, actions, config.keys.get(namespace) or {}) for namespace, actions in self.help_action_sets()
+            )
+        )
+        key_width = max((len(key) for key, _action in bindings), default=0)
+        lines = text.span_lines('\n'.join(f'{key:<{key_width}}  {action}' for key, action in bindings))
+        return Transition.push(PagerView('Help', lines))
 
 
 def compile_actions(namespace: str, actions: keys.ActionSet) -> keys.Bindings:

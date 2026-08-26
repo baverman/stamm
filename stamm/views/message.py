@@ -38,6 +38,9 @@ class MessageView(MailActionsMixin, DefaultActionView):
     def __post_init__(self) -> None:
         self.pager = PagerWidget([])
 
+    def help_action_sets(self) -> tuple[tuple[str, keys.ActionSet], ...]:
+        return super().help_action_sets() + ((PagerWidget.namespace, PagerWidget.actions),)
+
     def _set_notice(self, notice: str, _is_sent: bool) -> None:
         self.notice = notice
 
