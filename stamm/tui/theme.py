@@ -1,6 +1,7 @@
+import curses
 from dataclasses import dataclass, field, fields, is_dataclass
 from operator import attrgetter
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any, Callable, cast
 
 if TYPE_CHECKING:
     from _typeshed import DataclassInstance
@@ -89,6 +90,86 @@ class ThemeNode:
             result = self._resolve(style)
         setattr(self, name, result)
         return result
+
+
+COLOR_INDEXES = {
+    'default': -1,
+    'black': 0,
+    'red': 1,
+    'green': 2,
+    'yellow': 3,
+    'blue': 4,
+    'magenta': 5,
+    'cyan': 6,
+    'white': 7,
+    'bright-black': 8,
+    'bright-red': 9,
+    'bright-green': 10,
+    'bright-yellow': 11,
+    'bright-blue': 12,
+    'bright-magenta': 13,
+    'bright-cyan': 14,
+    'bright-white': 15,
+}
+
+COLOR_ATTRIBUTES = {
+    'bold': curses.A_BOLD,
+    'dim': curses.A_DIM,
+    'reverse': curses.A_REVERSE,
+    'underline': curses.A_UNDERLINE,
+    'standout': curses.A_STANDOUT,
+}
+
+
+def _color_index(value: str) -> int:
+    return int(value) if value.isdecimal() else COLOR_INDEXES[value]
+
+
+def _attributes(names: tuple[str, ...]) -> int:
+    result = 0
+    for name in names:
+        result |= COLOR_ATTRIBUTES[name]
+    return result
+
+
+def make_theme[T](theme_cls: type[T], colors: Any) -> T:
+    assert is_dataclass(theme_cls)
+
+    pairs: dict[tuple[int, int], int] = {}
+    next_pair = 1
+    has_colors = curses.has_colors()
+    if has_colors:
+        try:
+            curses.start_color()
+            curses.use_default_colors()
+        except curses.error as exc:
+            raise RuntimeError(f'cannot initialize terminal colors: {exc}') from exc
+
+    def fit_color(value: str) -> int:
+        index = _color_index(value)
+        return index % curses.COLORS if index >= 0 else index
+
+    def alloc_color(style: Style) -> int:
+        nonlocal next_pair
+        result = _attributes(style.attrs or ())
+        if not has_colors:
+            return result
+        colors_key = (fit_color(style.fg or 'default'), fit_color(style.bg or 'default'))
+        pair = pairs.get(colors_key)
+        if pair is None:
+            if next_pair >= curses.COLOR_PAIRS:
+                raise RuntimeError('terminal does not provide enough color pairs for the configured roles')
+            pair = next_pair
+            next_pair += 1
+            try:
+                curses.init_pair(pair, *colors_key)
+            except curses.error as exc:
+                raise RuntimeError(f'cannot initialize terminal colors: {exc}') from exc
+            pairs[colors_key] = pair
+        return result | curses.color_pair(pair)
+
+    fbinfo = FallbackInfo(theme_cls, 'normal')
+    return cast(T, ThemeNode('', colors, fbinfo, alloc_color))
 
 
 @dataclass(frozen=True)

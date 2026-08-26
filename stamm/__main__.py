@@ -7,9 +7,11 @@ import os
 import sys
 from pathlib import Path
 
-from . import ui, views
+from . import views
 from .app import App
 from .config import ConfigError, config, load_config, set_config
+from .theme import Theme
+from .tui import theme as tui_theme
 
 
 def configure_logging() -> None:
@@ -42,7 +44,8 @@ def main(argv: list[str] | None = None) -> int:
             curses.set_escdelay(100)
             screen.keypad(True)
 
-            theme = ui.initialize_colors(screen, config.colors)
+            theme = tui_theme.make_theme(Theme, config.colors)
+            screen.bkgd(' ', theme.normal)
             context = views.UIContext(screen, theme)
 
             app = App(context)

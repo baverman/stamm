@@ -13,6 +13,7 @@ from typing import Any, Callable, TypeVar
 
 from .schema import Typ, as_kv, as_list, field, optfield
 from .theme import Theme
+from .tui import theme as tui_theme
 
 T = TypeVar('T')
 
@@ -24,40 +25,16 @@ def update_known_actions(namespace: str, actions: Iterable[str]) -> None:
     known_actions.setdefault(namespace, set()).update(actions)
 
 
-COLOR_NAMES = frozenset(
-    {
-        'default',
-        'black',
-        'red',
-        'green',
-        'yellow',
-        'blue',
-        'magenta',
-        'cyan',
-        'white',
-        'bright-black',
-        'bright-red',
-        'bright-green',
-        'bright-yellow',
-        'bright-blue',
-        'bright-magenta',
-        'bright-cyan',
-        'bright-white',
-    }
-)
-COLOR_ATTRIBUTES = frozenset({'bold', 'dim', 'reverse', 'underline', 'standout'})
-
-
 def color(value: object) -> str:
     value = str(value)
-    if value not in COLOR_NAMES and not value.isdecimal():
+    if value not in tui_theme.COLOR_INDEXES and not value.isdecimal():
         raise ValueError(f'unknown color: {value}')
     return value
 
 
 def color_attribute(value: object) -> str:
     value = str(value)
-    if value not in COLOR_ATTRIBUTES:
+    if value not in tui_theme.COLOR_ATTRIBUTES:
         raise ValueError(f'unknown color attribute: {value}')
     return value
 
