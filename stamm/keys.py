@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 import curses
+import logging
 from collections.abc import Mapping
+
+from .compat import cache
 
 Key = str | int
 Bindings = dict[Key, str]
 ActionSet = dict[str, tuple[str, ...]]
 
+log = logging.getLogger(__name__)
 
+
+@cache
 def _named_keys() -> dict[str, tuple[Key, ...]]:
     result: dict[str, tuple[Key, ...]] = {}
     for name in dir(curses):
@@ -33,7 +39,8 @@ def _named_keys() -> dict[str, tuple[Key, ...]]:
     return result
 
 
-def parse_key(specification: str) -> tuple[Key, ...]:
+@cache
+def parse_key(specification: str, kind: str) -> tuple[Key, ...]:
     if len(specification) == 1:
         return (specification,)
     if len(specification) == 2 and specification[0] == '^':
@@ -47,52 +54,33 @@ def parse_key(specification: str) -> tuple[Key, ...]:
             return (chr(code & 0x1F),)
     values = _named_keys().get(specification.upper())
     if values is None:
-        raise ValueError(f'invalid or unavailable key name: {specification}')
-    return values
+        log.warning(f'invalid or unavailable key name: {kind}/{specification}')
+    return values or ()
 
 
-def compile_bindings(
-    namespace: str, actions: Mapping[str, tuple[str, ...]], overrides: Mapping[str, str]
-) -> tuple[Bindings, list[str]]:
-    diagnostics: list[str] = []
-    defaults = {specification: action for action, specifications in actions.items() for specification in specifications}
-    configured: dict[str, tuple[str, tuple[Key, ...]]] = {}
-    seen: dict[Key, str] = {}
-
+def compile_bindings(namespace: str, actions: Mapping[str, tuple[str, ...]], overrides: Mapping[str, str]) -> Bindings:
+    configured: Bindings = {}
+    removed: set[Key] = set()
     for source_key, action in overrides.items():
-        try:
-            values = parse_key(source_key)
-        except ValueError as exc:
-            diagnostics.append(f'keys.{namespace}.{source_key} = {action!r}: {exc}')
-            continue
         if action and action not in actions:
-            diagnostics.append(f'keys.{namespace}.{source_key} = {action!r}: unknown action')
             continue
-        previous = {seen[value] for value in values if value in seen and seen[value] != source_key}
-        if previous:
-            sources = ', '.join(repr(value) for value in sorted(previous))
-            diagnostics.append(f'keys.{namespace}.{source_key} = {action!r}: overlaps configured key {sources}')
-        for value in values:
-            seen[value] = source_key
-        configured[source_key] = (action, values)
 
-    configured_keys = configured.keys()
-    merged = [
-        (source_key, action, parse_key(source_key))
-        for source_key, action in defaults.items()
-        if source_key not in configured_keys
-    ]
-    merged.extend((source_key, action, values) for source_key, (action, values) in configured.items())
+        values = parse_key(source_key, 'config')
+        if action:
+            for key in values:
+                configured[key] = action
+        else:
+            removed.update(values)
 
-    bindings: Bindings = {}
-    for _source_key, action, values in merged:
-        for value in values:
-            if action:
-                bindings[value] = action
-            else:
-                bindings.pop(value, None)
+    defaults = {
+        key: action
+        for action, skeys in actions.items()
+        for skey in skeys
+        for key in parse_key(skey, 'app')
+        if key not in removed
+    }
 
-    return bindings, diagnostics
+    return defaults | configured
 
 
 def resolve(bindings: Mapping[Key, str], ch: Key) -> str | None:

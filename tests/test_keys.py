@@ -21,26 +21,22 @@ from stamm import keys
     ],
 )
 def test_parse_key(specification: str, expected: tuple[str | int, ...]) -> None:
-    assert keys.parse_key(specification) == expected
+    assert keys.parse_key(specification, 'app') == expected
 
 
 def test_enter_and_backspace_expand_terminal_variants() -> None:
-    assert keys.parse_key('ENTER') == ('\n', '\r', curses.KEY_ENTER)
-    assert keys.parse_key('BACKSPACE') == ('\x08', '\x7f', curses.KEY_BACKSPACE)
+    assert keys.parse_key('ENTER', 'app') == ('\n', '\r', curses.KEY_ENTER)
+    assert keys.parse_key('BACKSPACE', 'app') == ('\x08', '\x7f', curses.KEY_BACKSPACE)
 
 
-def test_compile_merges_unbinds_and_collects_all_diagnostics() -> None:
-    bindings, diagnostics = keys.compile_bindings(
+def test_compile_merges_and_unbinds() -> None:
+    bindings = keys.compile_bindings(
         'view',
         {'up': ('k',), 'down': ('j', '^D')},
-        {'j': '', '^N': 'down', '^n': 'up', 'missing': 'down', 'x': 'unknown'},
+        {'j': '', '^N': 'down'},
     )
 
-    assert bindings == {'k': 'up', '\x04': 'down', '\x0e': 'up'}
-    assert len(diagnostics) == 3
-    assert any('overlaps' in diagnostic for diagnostic in diagnostics)
-    assert any('invalid or unavailable' in diagnostic for diagnostic in diagnostics)
-    assert any('unknown action' in diagnostic for diagnostic in diagnostics)
+    assert bindings == {'k': 'up', '\x04': 'down', '\x0e': 'down'}
 
 
 def test_resolve_returns_none_for_unbound_event() -> None:

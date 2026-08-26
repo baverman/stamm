@@ -106,8 +106,7 @@ def test_choose_maps_generic_and_explicit_keys(
     key: str | int, expected: str | None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(ui, 'status', lambda *_args: None)
-    ChooseView.compiled_actions, diagnostics = keys.compile_bindings(ChooseView.namespace, ChooseView.actions, {})
-    assert not diagnostics
+    ChooseView.compiled_actions = keys.compile_bindings(ChooseView.namespace, ChooseView.actions, {})
     theme = ui.CursesTheme(0, 0, 0, 0, ui.IndexTheme(0, 0, 0, 0), ui.MessageTheme(0))
     context = ui.UIContext(_ChoiceWindow(key), theme)  # type: ignore[arg-type]
 
