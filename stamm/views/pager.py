@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import ClassVar
 
 from ..tui import keys, pager, text
-from . import GLOBAL_ACTIONS, MOVE_ACTIONS, PAGE_ACTIONS, ActionHandler, DefaultActionView, UIContext
+from . import GLOBAL_ACTIONS, MOVE_ACTIONS, PAGE_ACTIONS, ActionHandler, DefaultActionView, Transition, UIContext
 
 
 class PagerWidget(pager.PagerWidget, ActionHandler[None]):
@@ -27,3 +27,6 @@ class PagerView(DefaultActionView):
         if height > 1:
             self.pager.draw(context.subcontext(height - 1, width, 1, 0))
         window.refresh()
+
+    def on_unknown(self, context: UIContext, ch: keys.Key) -> Transition | None:
+        return self.pager.handle_key(context, ch)
