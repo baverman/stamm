@@ -7,7 +7,7 @@ from typing import ClassVar
 
 from .. import ui
 from ..mime import MimeManager, PartRow, part_rows, save_part
-from ..tui import keys
+from ..tui import keys, prompt
 from ..tui import text as tui_text
 from . import GLOBAL_ACTIONS, MOVE_ACTIONS, DefaultActionView, UIContext
 
@@ -58,13 +58,11 @@ class PartsView(DefaultActionView):
         part = self.rows[self.selected].part
         if part.is_multipart():
             return
-        value = ui.prompt(
-            context.screen,
+        value = prompt.PromptView(
             'Save to: ',
             part.get_filename() or '',
-            complete_paths=True,
-            status_attr=context.theme.status,
-        )
+            completer=prompt.path_completer,
+        ).run(context)
         if value:
             try:
                 path = save_part(part, Path(value))

@@ -12,6 +12,7 @@ from stamm.theme import IndexTheme, MessageTheme, Theme
 from stamm.ui import format_index_date, format_sender, viewport_start
 from stamm.views import UIContext
 from stamm.views.choose import ChooseView
+from stamm.views.index import _maildir_completer
 from tests.tui.fakes import Window
 
 
@@ -90,85 +91,6 @@ def test_choose_maps_generic_and_explicit_keys(
     )
 
 
-def test_path_completions_include_matching_directories_and_files(tmp_path: Path) -> None:
-    directory = tmp_path / 'mailbox'
-    directory.mkdir()
-    file = tmp_path / 'mail.txt'
-    file.write_text('', encoding='utf-8')
-    (tmp_path / 'other').mkdir()
-
-    assert ui._path_completions(str(tmp_path / 'mail')) == [str(file), str(directory) + '/']
-
-
-def test_prompt_edits_at_cursor(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(curses, 'curs_set', lambda _visibility: 0)
-    window = Window(keys=[curses.KEY_LEFT, 'b', '\n'])
-
-    assert ui.prompt(window.as_curses(), '> ', 'ac', status_attr=0) == 'abc'
-
-
-def test_prompt_navigates_completion_choices(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(curses, 'curs_set', lambda _visibility: 0)
-    window = Window(keys=['\t', curses.KEY_DOWN, '\n'])
-
-    value = ui.prompt(
-        window.as_curses(),
-        '> ',
-        completer=lambda _value, _cursor: [ui.Completion('first'), ui.Completion('second')],
-        status_attr=0,
-    )
-
-    assert value == 'second'
-
-
-def test_prompt_completes_common_prefix_and_supports_j_navigation(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(curses, 'curs_set', lambda _visibility: 0)
-    completed_values: list[str] = []
-
-    def complete(value: str, _cursor: int) -> list[ui.Completion]:
-        completed_values.append(value)
-        return [ui.Completion('alpha'), ui.Completion('alpine')]
-
-    window = Window(keys=['\t', 'j', '\n'])
-
-    assert ui.prompt(window.as_curses(), '> ', completer=complete, status_attr=0) == 'alpine'
-    assert completed_values == ['', 'alp']
-
-
-def test_repeated_tab_selects_next_without_applying_completion(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(curses, 'curs_set', lambda _visibility: 0)
-    choices = [ui.Completion('draft'), ui.Completion('drafts')]
-    window = Window(keys=['\t', '\t', '\n'])
-
-    assert ui.prompt(window.as_curses(), '> ', completer=lambda _value, _cursor: choices, status_attr=0) == 'drafts'
-
-
-def test_prompt_accepts_numeric_tab_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(curses, 'curs_set', lambda _visibility: 0)
-    window = Window(keys=['s', 'e', 9, '\n'])
-
-    def complete(value: str, _cursor: int) -> list[ui.Completion]:
-        return [] if ' ' in value else [ui.Completion('search ', accept=False)]
-
-    assert ui.prompt(window.as_curses(), ':', completer=complete, status_attr=0) == 'search '
-
-
-def test_prompt_page_navigation_scrolls_completion_menu(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(curses, 'curs_set', lambda _visibility: 0)
-    window = Window(keys=['\t', curses.KEY_NPAGE, '\n'])
-    choices = [ui.Completion(str(index)) for index in range(12)]
-
-    assert ui.prompt(window.as_curses(), '> ', completer=lambda _value, _cursor: choices, status_attr=0) == '8'
-
-
-def test_prompt_navigates_history(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(curses, 'curs_set', lambda _visibility: 0)
-    history = ['first', 'second']
-    window = Window(keys=[curses.KEY_UP, '\n'])
-
-    assert ui.prompt(window.as_curses(), '> ', history=history, status_attr=0) == 'second'
-
-
 def test_maildir_completer_only_returns_directories(tmp_path: Path) -> None:
     maildir = tmp_path / 'Inbox'
     (maildir / 'cur').mkdir(parents=True)
@@ -176,30 +98,9 @@ def test_maildir_completer_only_returns_directories(tmp_path: Path) -> None:
     (tmp_path / 'Invoice').mkdir()
     (tmp_path / 'index').write_text('', encoding='utf-8')
 
-    choices = ui.maildir_completer(str(tmp_path / 'In'), len(str(tmp_path / 'In')))
+    choices = _maildir_completer(str(tmp_path / 'In'), len(str(tmp_path / 'In')))
 
     assert [choice.value for choice in choices] == [str(maildir) + '/', str(tmp_path / 'Invoice') + '/']
     assert choices[0].label == 'Inbox/ [Maildir]'
     assert choices[0].accept
     assert not choices[1].accept
-
-
-def test_prompt_completes_one_maildir_without_entering_it(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(curses, 'curs_set', lambda _visibility: 0)
-    maildir = tmp_path / 'Inbox'
-    (maildir / 'cur').mkdir(parents=True)
-    (maildir / 'new').mkdir()
-    initial = str(tmp_path / 'In')
-    window = Window(keys=['\t', '\n'])
-
-    assert (
-        ui.prompt(
-            window.as_curses(),
-            'Maildir: ',
-            initial,
-            complete_paths=True,
-            completer=ui.maildir_completer,
-            status_attr=0,
-        )
-        == str(maildir) + '/'
-    )

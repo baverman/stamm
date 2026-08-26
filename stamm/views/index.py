@@ -15,7 +15,7 @@ from ..message import parse_message, select_body
 from ..mime import MimeManager
 from ..search import parse_query
 from ..state import IndexState, SearchState
-from ..tui import keys
+from ..tui import keys, prompt
 from ..tui import text as tui_text
 from . import GLOBAL_ACTIONS, MAIL_ACTIONS, MOVE_ACTIONS, PAGE_ACTIONS, DefaultActionView, Transition, UIContext
 from .compose import ComposeView
@@ -29,16 +29,32 @@ COMMAND_HISTORY: list[str] = []
 MAILDIR_HISTORY: list[str] = []
 
 
-def _command_completer(value: str, cursor: int) -> list[ui.Completion]:
+def _command_completer(value: str, cursor: int) -> list[prompt.Completion]:
     prefix = value[:cursor]
     if any(character.isspace() for character in prefix):
         return []
     suffix = value[cursor:]
     return [
-        ui.Completion(command + ' ' + suffix, command, accept=False)
+        prompt.Completion(command + ' ' + suffix, command, accept=False)
         for command in COMMANDS
         if command.startswith(prefix)
     ]
+
+
+def _maildir_completer(value: str, cursor: int) -> list[prompt.Completion]:
+    suffix = value[cursor:]
+    result: list[prompt.Completion] = []
+    for item in prompt.path_completer(value, cursor):
+        completed = item.value[: -len(suffix)] if suffix else item.value
+        path = Path(completed)
+        if not path.is_dir():
+            continue
+        is_maildir = (path / 'cur').is_dir() and (path / 'new').is_dir()
+        label = item.label or item.value
+        if is_maildir:
+            label += ' [Maildir]'
+        result.append(prompt.Completion(item.value, label, accept=is_maildir))
+    return result
 
 
 @dataclass
@@ -172,15 +188,12 @@ class IndexView(MailActionsMixin, DefaultActionView):
         return Transition.push(view)
 
     def _change_maildir(self, context: UIContext) -> IndexView | None:
-        value = ui.prompt(
-            context.screen,
+        value = prompt.PromptView(
             'Maildir: ',
             str(config.root) + '/',
-            complete_paths=True,
-            completer=ui.maildir_completer,
+            completer=_maildir_completer,
             history=MAILDIR_HISTORY,
-            status_attr=context.theme.status,
-        )
+        ).run(context)
         if not value:
             return None
         try:
@@ -303,13 +316,11 @@ class IndexView(MailActionsMixin, DefaultActionView):
             self._manual_refresh(context)
 
     def on_command(self, context: UIContext) -> Transition | None:
-        value = ui.prompt(
-            context.screen,
+        value = prompt.PromptView(
             ':',
             completer=_command_completer,
             history=COMMAND_HISTORY,
-            status_attr=context.theme.status,
-        )
+        ).run(context)
         if value is None:
             return None
         return self._search(value)

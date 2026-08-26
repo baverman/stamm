@@ -3,13 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, cast
 
-from stamm import ui
 from stamm.state import MaildirState, SearchState
+from stamm.tui import prompt
 from stamm.views.index import IndexView, _command_completer
 
 
 def test_command_completer_completes_command_name() -> None:
-    assert _command_completer('se', 2) == [ui.Completion('search ', 'search', accept=False)]
+    assert _command_completer('se', 2) == [prompt.Completion('search ', 'search', accept=False)]
 
 
 def test_command_completer_stops_at_arguments() -> None:
