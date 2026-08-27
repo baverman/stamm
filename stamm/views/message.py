@@ -8,7 +8,7 @@ from ..mime import MimeManager
 from ..state import IndexState
 from ..theme import MessageTheme
 from ..tui import keys, text
-from . import GLOBAL_ACTIONS, MAIL_ACTIONS, DefaultActionView, Transition, UIContext
+from . import GLOBAL_ACTIONS, MAIL_ACTIONS, ContextCache, DefaultActionView, Transition, UIContext
 from .mail_actions import MailActionsMixin
 from .pager import PagerWidget
 from .parts import PartsView
@@ -37,6 +37,7 @@ class MessageView(MailActionsMixin, DefaultActionView):
 
     def __post_init__(self) -> None:
         self.pager = PagerWidget([])
+        self.pager_context = ContextCache()
 
     def help_action_sets(self) -> tuple[tuple[str, keys.ActionSet], ...]:
         return super().help_action_sets() + ((PagerWidget.namespace, PagerWidget.actions),)
@@ -78,7 +79,7 @@ class MessageView(MailActionsMixin, DefaultActionView):
         notice = self.notice
         self.notice = ''
         if height > 1:
-            self.pager.draw(context.subcontext(height - 1, width, 1, 0))
+            self.pager.draw(self.pager_context.get(context, y=1))
         window.refresh()
         if notice:
             text.status(window, notice, context.theme.status)
@@ -87,7 +88,7 @@ class MessageView(MailActionsMixin, DefaultActionView):
         height, width = context.screen.getmaxyx()
         if height <= 1:
             return None
-        return self.pager.handle_key(context.subcontext(height - 1, width, 1, 0), ch)
+        return self.pager.handle_key(self.pager_context.get(context, y=1), ch)
 
     def on_open_html(self, _context: UIContext) -> None:
         part = self.message.get_body(preferencelist=('html',))

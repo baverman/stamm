@@ -3,6 +3,7 @@ from __future__ import annotations
 import curses
 from dataclasses import dataclass
 from functools import cached_property
+from typing import Any
 
 from ..config import config, update_known_actions
 from ..theme import Theme
@@ -78,6 +79,27 @@ class DefaultActionView(ActionView[Transition]):
 
 def compile_actions(namespace: str, actions: keys.ActionSet) -> keys.Bindings:
     return keys.compile_bindings(namespace, actions, config.keys.get(namespace) or {})
+
+
+class ContextCache:
+    _cached: UIContext
+    _oldkey: tuple[Any, ...] = ()
+
+    def get(self, context: UIContext, y: int = 0, x: int = 0, height: int = 0, width: int = 0) -> UIContext:
+        h, w = context.screen.getmaxyx()
+
+        if height < 1:
+            height = h - y + height
+
+        if width < 1:
+            width = w - x + width
+
+        key = context, x, y, width, height, context.screen.getbegyx()
+        if self._oldkey != key:
+            self._cached = context.subcontext(height, width, y, x)
+            self._oldkey = key
+
+        return self._cached
 
 
 def setup() -> None:
