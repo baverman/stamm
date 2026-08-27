@@ -12,6 +12,7 @@ SUPPORTED_FIELDS = frozenset(('from', 'to', 'subject'))
 class SearchTerm:
     field: str
     value: str
+    negated: bool = False
 
 
 def parse_query(query: str) -> list[SearchTerm]:
@@ -22,12 +23,14 @@ def parse_query(query: str) -> list[SearchTerm]:
 
     terms: list[SearchTerm] = []
     for token in tokens:
-        field, separator, value = token.partition(':')
+        negated = token.startswith('-')
+        expression = token[1:] if negated else token
+        field, separator, value = expression.partition(':')
         if not separator or not field or not value:
             raise ValueError(f'invalid search term: {token}')
         if field not in SUPPORTED_FIELDS:
             raise ValueError(f'unsupported search field: {field}')
-        terms.append(SearchTerm(field, value))
+        terms.append(SearchTerm(field, value, negated))
     return terms
 
 
@@ -37,4 +40,4 @@ def matches(message: IndexedMessage, terms: list[SearchTerm]) -> bool:
         'to': message.recipient.casefold(),
         'subject': message.subject.casefold(),
     }
-    return all(term.value.casefold() in values[term.field] for term in terms)
+    return all((term.value.casefold() in values[term.field]) is not term.negated for term in terms)

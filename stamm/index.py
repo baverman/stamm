@@ -114,6 +114,7 @@ class MessageIndex:
             shown_date = datetime.fromtimestamp(timestamp).astimezone().strftime('%Y-%m-%d %H:%M')
         refs = self._ids(str(msg.get('References', '')))
         reply_ids = self._ids(str(msg.get('In-Reply-To', '')))
+        recipients = ', '.join(str(value) for name in ('To', 'Cc') for value in msg.get_all(name, ()))
         return IndexedMessage(
             entry.key,
             entry.relative_path,
@@ -123,7 +124,7 @@ class MessageIndex:
             shown_date,
             timestamp,
             str(msg.get('From', '')),
-            str(msg.get('To', '')),
+            recipients,
             str(msg.get('Subject', '')),
             str(msg.get('Message-ID')) if msg.get('Message-ID') else None,
             reply_ids[-1] if reply_ids else None,
