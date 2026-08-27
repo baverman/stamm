@@ -148,7 +148,7 @@ def index_format(value: object) -> str:
 
 @dataclass(frozen=True)
 class IndexConfig:
-    format: str = field(index_format, default='{date:12} {flags:3} {from:25}  {subject:*}', required=False)
+    format: str = field(index_format, default='{date:12} {flags:4} {from:25}  {subject:*}', required=False)
 
 
 @dataclass(frozen=True)

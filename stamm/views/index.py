@@ -40,6 +40,17 @@ def _command_completer(value: str, cursor: int) -> list[prompt.Completion]:
     ]
 
 
+def _format_flags(flags: str, deleted: bool) -> str:
+    return ''.join(
+        (
+            '!' if 'F' in flags else ' ',
+            'r' if 'R' in flags else ' ',
+            'D' if deleted else ' ',
+            'N' if 'S' not in flags else ' ',
+        )
+    )
+
+
 def _maildir_completer(value: str, cursor: int) -> list[prompt.Completion]:
     suffix = value[cursor:]
     result: list[prompt.Completion] = []
@@ -111,14 +122,7 @@ class IndexView(MailActionsMixin, DefaultActionView):
         }
         for y, row in enumerate(self.state.rows[start : start + visible], 1):
             item = row.message
-            flags = ''.join(
-                (
-                    'D' if item.key in deleted else '',
-                    '!' if 'F' in item.flags else '',
-                    'r' if 'R' in item.flags else '',
-                    'N' if 'S' not in item.flags else '',
-                )
-            )[:3]
+            flags = _format_flags(item.flags, item.key in deleted)
             values = {
                 'date': ui.format_index_date(item.timestamp),
                 'flags': flags,

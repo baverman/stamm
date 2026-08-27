@@ -7,7 +7,7 @@ A fast, mutt-like terminal client for Maildir folders. Stamm requires Python 3.1
 
 ```toml
 [index]
-format = "{date:12} {flags:3} {sender:20}  {subject:*}"
+format = "{date:12} {flags:4} {sender:20}  {subject:*}"
 ```
 
 Available fields are `date`, `flags`, `sender`, and `subject`. A numeric width is fixed; `*` uses the remaining width. Fields can be reordered or omitted.
