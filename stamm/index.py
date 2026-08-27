@@ -25,6 +25,7 @@ class IndexedMessage:
     date: str
     timestamp: float
     sender: str
+    recipient: str
     subject: str
     message_id: str | None
     in_reply_to: str | None
@@ -35,8 +36,8 @@ _SCHEMA = """
 CREATE TABLE IF NOT EXISTS messages (
  key TEXT PRIMARY KEY, path TEXT NOT NULL, size INTEGER NOT NULL,
  mtime_ns INTEGER NOT NULL, flags TEXT NOT NULL, date TEXT NOT NULL,
- timestamp REAL NOT NULL, sender TEXT NOT NULL, subject TEXT NOT NULL,
- message_id TEXT, in_reply_to TEXT, refs TEXT NOT NULL
+ timestamp REAL NOT NULL, sender TEXT NOT NULL, recipient TEXT NOT NULL,
+ subject TEXT NOT NULL, message_id TEXT, in_reply_to TEXT, refs TEXT NOT NULL
 );
 """
 
@@ -72,6 +73,7 @@ class MessageIndex:
             date=row['date'],
             timestamp=row['timestamp'],
             sender=row['sender'],
+            recipient=row['recipient'],
             subject=row['subject'],
             message_id=row['message_id'],
             in_reply_to=row['in_reply_to'],
@@ -121,6 +123,7 @@ class MessageIndex:
             shown_date,
             timestamp,
             str(msg.get('From', '')),
+            str(msg.get('To', '')),
             str(msg.get('Subject', '')),
             str(msg.get('Message-ID')) if msg.get('Message-ID') else None,
             reply_ids[-1] if reply_ids else None,
@@ -145,7 +148,7 @@ class MessageIndex:
                     continue
                 item = self._parse(entry)
                 self.connection.execute(
-                    'INSERT OR REPLACE INTO messages VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+                    'INSERT OR REPLACE INTO messages VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
                     (
                         item.key,
                         item.path,
@@ -155,6 +158,7 @@ class MessageIndex:
                         item.date,
                         item.timestamp,
                         item.sender,
+                        item.recipient,
                         item.subject,
                         item.message_id,
                         item.in_reply_to,

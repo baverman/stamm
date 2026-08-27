@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from .index import IndexedMessage
 
-SUPPORTED_FIELDS = frozenset(('from', 'subject'))
+SUPPORTED_FIELDS = frozenset(('from', 'to', 'subject'))
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,5 +32,9 @@ def parse_query(query: str) -> list[SearchTerm]:
 
 
 def matches(message: IndexedMessage, terms: list[SearchTerm]) -> bool:
-    values = {'from': message.sender.casefold(), 'subject': message.subject.casefold()}
+    values = {
+        'from': message.sender.casefold(),
+        'to': message.recipient.casefold(),
+        'subject': message.subject.casefold(),
+    }
     return all(term.value.casefold() in values[term.field] for term in terms)
