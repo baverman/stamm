@@ -81,6 +81,7 @@ class MessageIndex:
         self.connection.row_factory = sqlite3.Row
         self.connection.execute('PRAGMA journal_mode=WAL')
         self.connection.executescript(_SCHEMA)
+        self._message_cache: dict[str, IndexedMessage] | None = None
 
     def close(self) -> None:
         self.connection.close()
@@ -111,11 +112,16 @@ class MessageIndex:
         )
 
     def messages(self, *, limit: int | None = None) -> list[IndexedMessage]:
+        if limit is None and self._message_cache is not None:
+            return list(self._message_cache.values())
         if limit is None:
             rows = self.connection.execute('SELECT * FROM messages')
         else:
             rows = self.connection.execute('SELECT * FROM messages ORDER BY timestamp DESC LIMIT ?', (limit,))
-        return [self._from_row(row) for row in rows]
+        messages = [self._from_row(row) for row in rows]
+        if limit is None:
+            self._message_cache = {item.key: item for item in messages}
+        return messages
 
     def get(self, key: str) -> IndexedMessage | None:
         row = self.connection.execute('SELECT * FROM messages WHERE key = ?', (key,)).fetchone()
@@ -214,8 +220,10 @@ class MessageIndex:
         )
         return item, self._body(msg)
 
-    def refresh(self) -> list[IndexedMessage]:
+    def refresh(self, *, force: bool = False) -> list[IndexedMessage]:
         disk = maildir.scan(self.maildir)
+        if force:
+            self._message_cache = None
         cached = {item.key: item for item in self.messages()}
         with self.connection:
             for key in cached.keys() - disk.keys():
@@ -253,6 +261,7 @@ class MessageIndex:
                 self.connection.execute('DELETE FROM message_fts WHERE key = ?', (key,))
                 self.connection.execute('INSERT INTO message_fts VALUES (?,?)', (key, body))
                 cached[key] = item
+        self._message_cache = cached
         return list(cached.values())
 
     def set_flags(self, key: str, *, add: str = '', remove: str = '') -> IndexedMessage:
@@ -262,7 +271,10 @@ class MessageIndex:
         path, flags = maildir.rename_flags(self.maildir, item.path, add, remove)
         with self.connection:
             self.connection.execute('UPDATE messages SET path=?, flags=? WHERE key=?', (path, flags, key))
-        return replace(item, path=path, flags=flags)
+        item = replace(item, path=path, flags=flags)
+        if self._message_cache is not None:
+            self._message_cache[key] = item
+        return item
 
     def move_to(self, key: str, destination: Path) -> Path:
         if self.maildir.resolve() == destination.resolve():
@@ -274,4 +286,6 @@ class MessageIndex:
         with self.connection:
             self.connection.execute('DELETE FROM message_fts WHERE key = ?', (key,))
             self.connection.execute('DELETE FROM messages WHERE key = ?', (key,))
+        if self._message_cache is not None:
+            self._message_cache.pop(key, None)
         return target
