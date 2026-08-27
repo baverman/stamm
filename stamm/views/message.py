@@ -21,7 +21,7 @@ class MessageView(MailActionsMixin, DefaultActionView):
         GLOBAL_ACTIONS
         | MAIL_ACTIONS
         | {
-            'open_html': ('h',),
+            'open_html': ('H',),
             'toggle_headers': ('w',),
         }
     )

@@ -10,7 +10,7 @@ from ..tui import keys, text, views
 
 GLOBAL_ACTIONS: keys.ActionSet = {
     'back': ('q',),
-    'help': ('?',),
+    'help': ('h',),
 }
 
 MOVE_ACTIONS: keys.ActionSet = {

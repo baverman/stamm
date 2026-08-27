@@ -68,6 +68,7 @@ class IndexView(MailActionsMixin, DefaultActionView):
             'open': ('ENTER',),
             'refresh': ('R',),
             'command': (':',),
+            'search': ('/',),
             'change': ('c',),
             'compose': ('m',),
             'delete': ('d',),
@@ -314,15 +315,23 @@ class IndexView(MailActionsMixin, DefaultActionView):
         if self.state is self.state.source_state:
             self._manual_refresh(context)
 
-    def on_command(self, context: UIContext) -> Transition | None:
+    def _prompt_command(self, context: UIContext, initial: str = '') -> Transition | None:
         value = prompt.PromptView(
             ':',
+            initial,
             completer=_command_completer,
             history=COMMAND_HISTORY,
         ).run(context)
         if value is None:
             return None
         return self._search(value)
+
+    def on_command(self, context: UIContext) -> Transition | None:
+        return self._prompt_command(context)
+
+    def on_search(self, context: UIContext) -> Transition | None:
+        query = self.state.query if isinstance(self.state, SearchState) else ''
+        return self._prompt_command(context, f'search {query}')
 
     def on_change(self, context: UIContext) -> Transition | None:
         view = self._change_maildir(context)
