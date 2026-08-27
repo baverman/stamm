@@ -51,6 +51,10 @@ def _format_flags(flags: str, deleted: bool) -> str:
     )
 
 
+def _status_with_delete_count(status: str, count: int) -> str:
+    return f'{status} / {count} to delete' if count else status
+
+
 def _maildir_completer(value: str, cursor: int) -> list[prompt.Completion]:
     suffix = value[cursor:]
     result: list[prompt.Completion] = []
@@ -77,6 +81,7 @@ class IndexView(MailActionsMixin, DefaultActionView):
         | MAIL_ACTIONS
         | {
             'open': ('ENTER',),
+            'open_html': ('H',),
             'refresh': ('R',),
             'command': (':',),
             'search': ('/',),
@@ -146,7 +151,11 @@ class IndexView(MailActionsMixin, DefaultActionView):
                 x += column_width
         count = len(self.state.rows)
         summary = f'{count} {"message" if count == 1 else "messages"}'
-        text.status(screen, self.notice or summary, theme.status)
+        status = _status_with_delete_count(
+            self.notice or summary,
+            len(self.state.source_state.pending_delete),
+        )
+        text.status(screen, status, theme.status)
         self.notice = ''
 
     def _message(self) -> EmailMessage:
@@ -222,7 +231,6 @@ class IndexView(MailActionsMixin, DefaultActionView):
             return
         self.state.source_state.mark_deleted(self.state.selected_message.key)
         self.state.select_next()
-        self.notice = 'marked for deletion'
 
     def _manual_refresh(self, context: UIContext) -> None:
         if hook := config.hooks.pre_refresh:
@@ -325,6 +333,20 @@ class IndexView(MailActionsMixin, DefaultActionView):
             )
         )
 
+    def on_open_html(self, _context: UIContext) -> None:
+        if not self.state.rows:
+            return
+        message = self._message()
+        part = message.get_body(preferencelist=('html',))
+        if part is None:
+            self.notice = 'no HTML part'
+            return
+        try:
+            self.mime.open(part, message)
+            self.notice = 'opened HTML externally'
+        except Exception as exc:
+            self.notice = str(exc)
+
     def on_refresh(self, context: UIContext) -> None:
         if self.state is self.state.source_state:
             self._manual_refresh(context)
@@ -372,7 +394,6 @@ class IndexView(MailActionsMixin, DefaultActionView):
         if self.state.rows:
             self.state.source_state.unmark_deleted(self.state.selected_message.key)
             self.state.select_next()
-            self.notice = 'deletion mark removed'
 
     def on_flag(self, context: UIContext) -> None:
         if self.state.rows:
