@@ -115,7 +115,7 @@ class SearchState(IndexState):
     @classmethod
     def create(cls, source: MaildirState, query: str, expression: SearchExpression) -> SearchState:
         rows = cls._matching_rows(source, expression)
-        return cls(rows, 0, 0, source, query, expression)
+        return cls(rows, max(0, len(rows) - 1), 0, source, query, expression)
 
     @property
     def title(self) -> str:

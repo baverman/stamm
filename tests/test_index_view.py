@@ -7,7 +7,7 @@ from typing import Any, cast
 from stamm.index import MessageIndex
 from stamm.maildir import ensure_maildir, store
 from stamm.state import MaildirState
-from stamm.views.index import IndexView, _format_flags, _status_with_delete_count
+from stamm.views.index import IndexView, _format_flags, _index_summary, _status_with_delete_count
 
 
 def test_index_flags_have_dedicated_positions() -> None:
@@ -15,10 +15,11 @@ def test_index_flags_have_dedicated_positions() -> None:
     assert _format_flags('FRS', True) == '!rD '
 
 
-def test_index_status_counts_pending_deletions() -> None:
-    assert _status_with_delete_count('5 messages', 0) == '5 messages'
-    assert _status_with_delete_count('5 messages', 1) == '5 messages / 1 to delete'
-    assert _status_with_delete_count('5 messages', 2) == '5 messages / 2 to delete'
+def test_index_status_shows_position_and_pending_deletions() -> None:
+    assert _index_summary(0, 0) == '0/0 messages'
+    assert _index_summary(2, 5) == '3/5 messages'
+    assert _status_with_delete_count('3/5 messages', 0) == '3/5 messages'
+    assert _status_with_delete_count('3/5 messages', 2) == '3/5 messages | 2 to delete'
 
 
 def test_index_open_html_action_opens_selected_message(tmp_path: Path) -> None:

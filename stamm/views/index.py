@@ -23,7 +23,7 @@ from .message import MessageView
 from .pager import PagerView
 from .parts import PartsView
 
-COMMANDS = ('reindex', 'search')
+COMMANDS = ('reindex', 'search', 'unmark_deleted')
 COMMAND_HISTORY: list[str] = []
 MAILDIR_HISTORY: list[str] = []
 
@@ -51,8 +51,12 @@ def _format_flags(flags: str, deleted: bool) -> str:
     )
 
 
+def _index_summary(selected: int, count: int) -> str:
+    return f'{selected + 1 if count else 0}/{count} messages'
+
+
 def _status_with_delete_count(status: str, count: int) -> str:
-    return f'{status} / {count} to delete' if count else status
+    return f'{status} | {count} to delete' if count else status
 
 
 def _maildir_completer(value: str, cursor: int) -> list[prompt.Completion]:
@@ -150,7 +154,7 @@ class IndexView(MailActionsMixin, DefaultActionView):
                 text.put(screen, y, x, values[name].ljust(column_width), visible_width, attr)
                 x += column_width
         count = len(self.state.rows)
-        summary = f'{count} {"message" if count == 1 else "messages"}'
+        summary = _index_summary(self.state.selected, count)
         status = _status_with_delete_count(
             self.notice or summary,
             len(self.state.source_state.pending_delete),
@@ -194,6 +198,18 @@ class IndexView(MailActionsMixin, DefaultActionView):
             indexed, removed = self.state.source_state.index.reindex_fts(full=target == 'fts-full', progress=progress)
             action = 'rebuilt' if target == 'fts-full' else 'reconciled'
             self.notice = f'FTS index {action}: {indexed} indexed, {removed} removed'
+            return None
+        if name == 'unmark_deleted':
+            if len(parts) == 2 and parts[1].strip():
+                self.notice = 'usage: unmark_deleted'
+                return None
+            source = self.state.source_state
+            visible = {row.message.key for row in self.state.rows}
+            unmarked = source.pending_delete & visible
+            for key in unmarked:
+                source.unmark_deleted(key)
+            noun = 'message' if len(unmarked) == 1 else 'messages'
+            self.notice = f'{len(unmarked)} {noun} unmarked for deletion'
             return None
         if name != 'search':
             self.notice = f'unknown command: {name}'

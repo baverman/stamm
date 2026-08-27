@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from email.message import EmailMessage
 from pathlib import Path
 from typing import Any, cast
 
 import pytest
 
 from stamm.index import MessageIndex
-from stamm.maildir import ensure_maildir
+from stamm.maildir import ensure_maildir, store
 from stamm.search import parse_query
 from stamm.state import MaildirState, SearchState
 from stamm.tui import prompt
@@ -15,6 +16,7 @@ from stamm.views.index import IndexView, _command_completer
 
 def test_command_completer_completes_command_name() -> None:
     assert _command_completer('se', 2) == [prompt.Completion('search ', 'search', accept=False)]
+    assert _command_completer('unm', 3) == [prompt.Completion('unmark_deleted ', 'unmark_deleted', accept=False)]
 
 
 def test_command_completer_stops_at_arguments() -> None:
@@ -35,6 +37,29 @@ def test_reindex_fts_command(tmp_path: Path) -> None:
         assert view.notice == 'FTS index reconciled: 0 indexed, 0 removed'
         assert view._search('reindex fts-full') is None
         assert view.notice == 'FTS index rebuilt: 0 indexed, 0 removed'
+
+
+def test_unmark_deleted_command_only_affects_visible_messages(tmp_path: Path) -> None:
+    ensure_maildir(tmp_path)
+    for subject in ('visible one', 'visible two', 'hidden'):
+        message = EmailMessage()
+        message['Subject'] = subject
+        message.set_content('body')
+        store(tmp_path, message.as_bytes())
+
+    with MessageIndex(tmp_path) as index:
+        source = MaildirState([], 0, 0, tmp_path, index, set())
+        source.load_rows(index.refresh())
+        source.pending_delete.update(row.message.key for row in source.rows)
+        state = SearchState.create(source, 'subject:visible', parse_query('subject:visible'))
+        assert state.selected == 1
+        view = IndexView(state, cast(Any, None), cast(Any, None))
+        hidden_key = next(row.message.key for row in source.rows if row.message.subject == 'hidden')
+
+        assert view._search('unmark_deleted') is None
+
+        assert source.pending_delete == {hidden_key}
+        assert view.notice == '2 messages unmarked for deletion'
 
 
 def test_search_action_uses_slash_and_prefills_current_query(monkeypatch: pytest.MonkeyPatch) -> None:
