@@ -7,6 +7,7 @@ import pytest
 
 from stamm.index import MessageIndex
 from stamm.maildir import ensure_maildir
+from stamm.search import parse_query
 from stamm.state import MaildirState, SearchState
 from stamm.tui import prompt
 from stamm.views.index import IndexView, _command_completer
@@ -47,7 +48,7 @@ def test_search_action_uses_slash_and_prefills_current_query(monkeypatch: pytest
     monkeypatch.setattr(prompt.PromptView, 'run', run)
 
     IndexView(source, dependency, dependency).on_search(dependency)
-    IndexView(SearchState.create(source, 'from:bob', []), dependency, dependency).on_search(dependency)
+    IndexView(SearchState.create(source, 'from:bob', parse_query('')), dependency, dependency).on_search(dependency)
 
     assert IndexView.actions['search'] == ('/',)
     assert initial_values == ['search ', 'search from:bob']
@@ -57,7 +58,7 @@ def test_search_from_search_view_replaces_current_search() -> None:
     source = MaildirState([], 0, 0, Path('.'), cast(Any, None), set())
     dependency = cast(Any, None)
     maildir_view = IndexView(source, dependency, dependency)
-    search_view = IndexView(SearchState.create(source, 'old', []), dependency, dependency)
+    search_view = IndexView(SearchState.create(source, 'old', parse_query('')), dependency, dependency)
     stack = [maildir_view, search_view]
 
     change = search_view._search('search subject:new')

@@ -191,8 +191,8 @@ class IndexView(MailActionsMixin, DefaultActionView):
             return None
         query = parts[1].strip() if len(parts) == 2 else ''
         try:
-            terms = parse_query(query)
-            state = SearchState.create(self.state.source_state, query, terms)
+            expression = parse_query(query)
+            state = SearchState.create(self.state.source_state, query, expression)
         except ValueError as exc:
             self.notice = str(exc)
             return None

@@ -3,9 +3,42 @@ from __future__ import annotations
 from email.message import EmailMessage
 from pathlib import Path
 
+import pytest
+
 from stamm.index import MessageIndex
 from stamm.maildir import ensure_maildir, store
-from stamm.search import matches, parse_query
+from stamm.search import SearchGroup, SearchTerm, matches, parse_query
+
+
+def test_unqualified_search_terms_expand_to_subject_or_body() -> None:
+    assert parse_query('something') == SearchGroup(
+        'and',
+        (SearchGroup('or', (SearchTerm('subject', 'something'), SearchTerm('body', 'something'))),),
+    )
+
+
+def test_unqualified_search_terms_cannot_be_negated() -> None:
+    with pytest.raises(ValueError, match='invalid search term: -something'):
+        parse_query('-something')
+
+
+def test_search_groups_are_nested_and_case_insensitive() -> None:
+    assert parse_query("from:alice (OR subject:report body:'(report OR summary)')") == SearchGroup(
+        'and',
+        (
+            SearchTerm('from', 'alice'),
+            SearchGroup(
+                'or',
+                (SearchTerm('subject', 'report'), SearchTerm('body', '(report OR summary)')),
+            ),
+        ),
+    )
+
+
+@pytest.mark.parametrize('query', ('(not subject:foo)', '(and)', '(or subject:foo', ')'))
+def test_invalid_search_groups(query: str) -> None:
+    with pytest.raises(ValueError):
+        parse_query(query)
 
 
 def test_to_search_uses_indexed_recipient_header(tmp_path: Path) -> None:
@@ -35,6 +68,11 @@ def test_to_search_uses_indexed_recipient_header(tmp_path: Path) -> None:
     assert matches(stored, parse_query('-to:carol@example.com'))
     assert not matches(stored, parse_query('-to:BOB@example.com'))
     assert matches(stored, parse_query('from:sender -subject:goodbye'))
+    body_matches = {'hello': set(), 'body': {stored.key}, 'missing': set()}
+    assert matches(stored, parse_query('hello'), body_matches)
+    assert matches(stored, parse_query('body'), body_matches)
+    assert matches(stored, parse_query('(or subject:missing body:body)'), body_matches)
+    assert not matches(stored, parse_query('(and subject:hello body:missing)'), body_matches)
     assert 'recipient' in columns
 
 

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .index import INITIAL_MESSAGE_LIMIT, IndexedMessage, MessageIndex
-from .search import SearchTerm, matches
+from .search import SearchExpression, body_queries, matches
 from .threads import ThreadRow, build_threads
 
 
@@ -105,17 +105,17 @@ class MaildirState(IndexState):
 class SearchState(IndexState):
     source: MaildirState
     query: str
-    terms: list[SearchTerm]
+    expression: SearchExpression
 
     @staticmethod
-    def _matching_rows(source: MaildirState, terms: list[SearchTerm]) -> list[ThreadRow]:
-        body_matches = {term.value: source.index.search_body(term.value) for term in terms if term.field == 'body'}
-        return [row for row in source.rows if matches(row.message, terms, body_matches)]
+    def _matching_rows(source: MaildirState, expression: SearchExpression) -> list[ThreadRow]:
+        body_matches = {query: source.index.search_body(query) for query in body_queries(expression)}
+        return [row for row in source.rows if matches(row.message, expression, body_matches)]
 
     @classmethod
-    def create(cls, source: MaildirState, query: str, terms: list[SearchTerm]) -> SearchState:
-        rows = cls._matching_rows(source, terms)
-        return cls(rows, 0, 0, source, query, terms)
+    def create(cls, source: MaildirState, query: str, expression: SearchExpression) -> SearchState:
+        rows = cls._matching_rows(source, expression)
+        return cls(rows, 0, 0, source, query, expression)
 
     @property
     def title(self) -> str:
@@ -127,7 +127,7 @@ class SearchState(IndexState):
 
     def rebuild(self) -> None:
         key = self.selected_message.key if self.rows else None
-        self.rows = self._matching_rows(self.source, self.terms)
+        self.rows = self._matching_rows(self.source, self.expression)
         if key:
             fallback = min(self.selected, max(0, len(self.rows) - 1))
             self.selected = next((i for i, row in enumerate(self.rows) if row.message.key == key), fallback)
