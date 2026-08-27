@@ -70,6 +70,34 @@ def test_body_search_indexes_text_plain_and_reconciles_missing_rows(tmp_path: Pa
         assert index.search_body('orphan') == set()
 
 
+def test_body_search_uses_html_only_without_text_plain(tmp_path: Path) -> None:
+    ensure_maildir(tmp_path)
+    message = EmailMessage()
+    message.set_content(
+        '<html><body><p>visible marker</p><script>hidden-script</script></body></html>',
+        subtype='html',
+    )
+    store(tmp_path, message.as_bytes())
+
+    progress: list[tuple[int, int]] = []
+    with MessageIndex(tmp_path) as index:
+        indexed = index.refresh()[0]
+        assert index.search_body('visible') == {indexed.key}
+        assert index.search_body('"hidden-script"') == set()
+
+        with index.connection:
+            index.connection.execute('DELETE FROM message_fts WHERE key = ?', (indexed.key,))
+            index.connection.execute('INSERT INTO message_fts VALUES (?,?)', (indexed.key, 'outdated'))
+
+        assert index.reindex_fts() == (0, 0)
+        assert index.search_body('outdated') == {indexed.key}
+        assert index.reindex_fts(full=True, progress=lambda done, total: progress.append((done, total))) == (1, 0)
+        assert index.search_body('visible') == {indexed.key}
+        assert index.search_body('outdated') == set()
+
+    assert progress == [(1, 1)]
+
+
 def test_body_search_terms_use_fts_matches(tmp_path: Path) -> None:
     ensure_maildir(tmp_path)
     message = EmailMessage()

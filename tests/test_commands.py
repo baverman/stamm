@@ -31,7 +31,9 @@ def test_reindex_fts_command(tmp_path: Path) -> None:
         view = IndexView(source, cast(Any, None), cast(Any, None))
 
         assert view._search('reindex fts') is None
-        assert view.notice == 'FTS index reconciled: 0 added, 0 removed'
+        assert view.notice == 'FTS index reconciled: 0 indexed, 0 removed'
+        assert view._search('reindex fts-full') is None
+        assert view.notice == 'FTS index rebuilt: 0 indexed, 0 removed'
 
 
 def test_search_action_uses_slash_and_prefills_current_query(monkeypatch: pytest.MonkeyPatch) -> None:

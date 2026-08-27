@@ -170,15 +170,21 @@ class IndexView(MailActionsMixin, DefaultActionView):
     def _reload(self) -> None:
         self.state.reload()
 
-    def _search(self, command: str) -> Transition | None:
+    def _search(
+        self,
+        command: str,
+        progress: Callable[[int, int], None] | None = None,
+    ) -> Transition | None:
         parts = command.split(maxsplit=1)
         name = parts[0] if parts else ''
         if name == 'reindex':
-            if len(parts) != 2 or parts[1].strip() != 'fts':
-                self.notice = 'usage: reindex fts'
+            target = parts[1].strip() if len(parts) == 2 else ''
+            if target not in ('fts', 'fts-full'):
+                self.notice = 'usage: reindex fts|fts-full'
                 return None
-            added, removed = self.state.source_state.index.reindex_fts()
-            self.notice = f'FTS index reconciled: {added} added, {removed} removed'
+            indexed, removed = self.state.source_state.index.reindex_fts(full=target == 'fts-full', progress=progress)
+            action = 'rebuilt' if target == 'fts-full' else 'reconciled'
+            self.notice = f'FTS index {action}: {indexed} indexed, {removed} removed'
             return None
         if name != 'search':
             self.notice = f'unknown command: {name}'
@@ -332,7 +338,11 @@ class IndexView(MailActionsMixin, DefaultActionView):
         ).run(context)
         if value is None:
             return None
-        return self._search(value)
+
+        def progress(processed: int, total: int) -> None:
+            text.status(context.screen, f'FTS indexing: {processed}/{total}', context.theme.status)
+
+        return self._search(value, progress)
 
     def on_command(self, context: UIContext) -> Transition | None:
         return self._prompt_command(context)

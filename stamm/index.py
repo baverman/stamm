@@ -3,12 +3,14 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime
 from email import policy
 from email.message import Message
 from email.parser import BytesParser
 from email.utils import parsedate_to_datetime
+from html.parser import HTMLParser
 from pathlib import Path
 
 from . import maildir
@@ -45,6 +47,28 @@ CREATE VIRTUAL TABLE IF NOT EXISTS message_fts USING fts5(
  key UNINDEXED, body, tokenize = 'unicode61 remove_diacritics 2'
 );
 """
+
+
+class _HTMLTextParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.parts: list[str] = []
+        self.ignored = 0
+
+    def handle_starttag(self, tag: str, _attrs: list[tuple[str, str | None]]) -> None:
+        if tag in ('script', 'style'):
+            self.ignored += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in ('script', 'style') and self.ignored:
+            self.ignored -= 1
+
+    def handle_data(self, data: str) -> None:
+        if not self.ignored and data.strip():
+            self.parts.append(data)
+
+    def text(self) -> str:
+        return ' '.join(self.parts)
 
 
 class MessageIndex:
@@ -103,21 +127,31 @@ class MessageIndex:
         except sqlite3.OperationalError as exc:
             raise ValueError(f'invalid body search: {exc}') from exc
 
-    def reindex_fts(self) -> tuple[int, int]:
+    def reindex_fts(
+        self,
+        *,
+        full: bool = False,
+        progress: Callable[[int, int], None] | None = None,
+    ) -> tuple[int, int]:
         messages = self.messages()
         message_keys = {item.key for item in messages}
         body_keys = {row['key'] for row in self.connection.execute('SELECT key FROM message_fts')}
-        missing = [item for item in messages if item.key not in body_keys]
+        targets = messages if full else [item for item in messages if item.key not in body_keys]
         orphaned = body_keys - message_keys
+        total = len(targets)
         with self.connection:
             for key in orphaned:
                 self.connection.execute('DELETE FROM message_fts WHERE key = ?', (key,))
-            for item in missing:
+            for processed, item in enumerate(targets, 1):
                 path = self.maildir / item.path
                 with path.open('rb') as stream:
                     message = BytesParser(policy=policy.default).parse(stream)
+                if full:
+                    self.connection.execute('DELETE FROM message_fts WHERE key = ?', (item.key,))
                 self.connection.execute('INSERT INTO message_fts VALUES (?,?)', (item.key, self._body(message)))
-        return len(missing), len(orphaned)
+                if progress is not None and (processed % 100 == 0 or processed == total):
+                    progress(processed, total)
+        return len(targets), len(orphaned)
 
     @staticmethod
     def _ids(value: str | None) -> tuple[str, ...]:
@@ -129,7 +163,17 @@ class MessageIndex:
 
     @staticmethod
     def _body(message: Message) -> str:
-        return '\n'.join(payload_text(part) for part in message.walk() if part.get_content_type() == 'text/plain')
+        plain = [payload_text(part) for part in message.walk() if part.get_content_type() == 'text/plain']
+        if plain:
+            return '\n'.join(plain)
+        html = [payload_text(part) for part in message.walk() if part.get_content_type() == 'text/html']
+        result = []
+        for content in html:
+            parser = _HTMLTextParser()
+            parser.feed(content)
+            parser.close()
+            result.append(parser.text())
+        return '\n'.join(result)
 
     def _parse(self, entry: maildir.MaildirEntry) -> tuple[IndexedMessage, str]:
         with entry.path.open('rb') as stream:
