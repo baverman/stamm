@@ -12,6 +12,7 @@ from email.parser import BytesParser
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
 from pathlib import Path
+from time import monotonic
 
 from . import maildir
 from .message import payload_text
@@ -139,18 +140,23 @@ class MessageIndex:
         targets = messages if full else [item for item in messages if item.key not in body_keys]
         orphaned = body_keys - message_keys
         total = len(targets)
+        next_progress = monotonic() + 0.1
         with self.connection:
-            for key in orphaned:
-                self.connection.execute('DELETE FROM message_fts WHERE key = ?', (key,))
+            if full:
+                self.connection.execute('DELETE FROM message_fts')
+            else:
+                for key in orphaned:
+                    self.connection.execute('DELETE FROM message_fts WHERE key = ?', (key,))
             for processed, item in enumerate(targets, 1):
                 path = self.maildir / item.path
                 with path.open('rb') as stream:
                     message = BytesParser(policy=policy.default).parse(stream)
-                if full:
-                    self.connection.execute('DELETE FROM message_fts WHERE key = ?', (item.key,))
                 self.connection.execute('INSERT INTO message_fts VALUES (?,?)', (item.key, self._body(message)))
-                if progress is not None and (processed % 100 == 0 or processed == total):
-                    progress(processed, total)
+                if progress is not None:
+                    now = monotonic()
+                    if now >= next_progress or processed == total:
+                        progress(processed, total)
+                        next_progress = now + 0.1
         return len(targets), len(orphaned)
 
     @staticmethod

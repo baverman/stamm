@@ -7,13 +7,14 @@ from email.utils import parseaddr
 from .theme import Theme as Theme
 
 MONTHS = ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')
+OLD_TS_LIMIT = 11 * 30 * 86400
 
 
 def format_index_date(timestamp: float, now: float | None = None) -> str:
     current = time.time() if now is None else now
     value = datetime.fromtimestamp(timestamp).astimezone()
     month = MONTHS[value.month - 1]
-    if current - timestamp >= 365 * 24 * 60 * 60:
+    if current - timestamp >= OLD_TS_LIMIT:
         return f'{value.year:04d} {month} {value.day:02d} '
     return f'{month} {value.day:02d} {value.hour:02d}:{value.minute:02d}'
 
