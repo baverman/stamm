@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import shlex
 from dataclasses import dataclass
+from typing import AbstractSet, Mapping
 
 from .index import IndexedMessage
 
-SUPPORTED_FIELDS = frozenset(('from', 'to', 'subject'))
+SUPPORTED_FIELDS = frozenset(('from', 'to', 'subject', 'body'))
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,10 +35,21 @@ def parse_query(query: str) -> list[SearchTerm]:
     return terms
 
 
-def matches(message: IndexedMessage, terms: list[SearchTerm]) -> bool:
+def matches(
+    message: IndexedMessage,
+    terms: list[SearchTerm],
+    body_matches: Mapping[str, AbstractSet[str]] | None = None,
+) -> bool:
     values = {
         'from': message.sender.casefold(),
         'to': message.recipient.casefold(),
         'subject': message.subject.casefold(),
     }
-    return all((term.value.casefold() in values[term.field]) is not term.negated for term in terms)
+    for term in terms:
+        if term.field == 'body':
+            matched = body_matches is not None and message.key in body_matches[term.value]
+        else:
+            matched = term.value.casefold() in values[term.field]
+        if matched is term.negated:
+            return False
+    return True

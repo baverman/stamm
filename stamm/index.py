@@ -6,11 +6,13 @@ import sqlite3
 from dataclasses import dataclass, replace
 from datetime import datetime
 from email import policy
-from email.parser import BytesHeaderParser
+from email.message import Message
+from email.parser import BytesParser
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
 from . import maildir
+from .message import payload_text
 
 INITIAL_MESSAGE_LIMIT = 100
 
@@ -38,6 +40,9 @@ CREATE TABLE IF NOT EXISTS messages (
  mtime_ns INTEGER NOT NULL, flags TEXT NOT NULL, date TEXT NOT NULL,
  timestamp REAL NOT NULL, sender TEXT NOT NULL, recipient TEXT NOT NULL,
  subject TEXT NOT NULL, message_id TEXT, in_reply_to TEXT, refs TEXT NOT NULL
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS message_fts USING fts5(
+ key UNINDEXED, body, tokenize = 'unicode61 remove_diacritics 2'
 );
 """
 
@@ -91,6 +96,29 @@ class MessageIndex:
         row = self.connection.execute('SELECT * FROM messages WHERE key = ?', (key,)).fetchone()
         return self._from_row(row) if row else None
 
+    def search_body(self, query: str) -> set[str]:
+        try:
+            rows = self.connection.execute('SELECT key FROM message_fts WHERE message_fts MATCH ?', (query,))
+            return {row['key'] for row in rows}
+        except sqlite3.OperationalError as exc:
+            raise ValueError(f'invalid body search: {exc}') from exc
+
+    def reindex_fts(self) -> tuple[int, int]:
+        messages = self.messages()
+        message_keys = {item.key for item in messages}
+        body_keys = {row['key'] for row in self.connection.execute('SELECT key FROM message_fts')}
+        missing = [item for item in messages if item.key not in body_keys]
+        orphaned = body_keys - message_keys
+        with self.connection:
+            for key in orphaned:
+                self.connection.execute('DELETE FROM message_fts WHERE key = ?', (key,))
+            for item in missing:
+                path = self.maildir / item.path
+                with path.open('rb') as stream:
+                    message = BytesParser(policy=policy.default).parse(stream)
+                self.connection.execute('INSERT INTO message_fts VALUES (?,?)', (item.key, self._body(message)))
+        return len(missing), len(orphaned)
+
     @staticmethod
     def _ids(value: str | None) -> tuple[str, ...]:
         if not value:
@@ -99,9 +127,13 @@ class MessageIndex:
         found = re.findall(r'<[^<>]+>', value)
         return tuple(found or value.split())
 
-    def _parse(self, entry: maildir.MaildirEntry) -> IndexedMessage:
+    @staticmethod
+    def _body(message: Message) -> str:
+        return '\n'.join(payload_text(part) for part in message.walk() if part.get_content_type() == 'text/plain')
+
+    def _parse(self, entry: maildir.MaildirEntry) -> tuple[IndexedMessage, str]:
         with entry.path.open('rb') as stream:
-            msg = BytesHeaderParser(policy=policy.default).parse(stream)
+            msg = BytesParser(policy=policy.default).parse(stream)
         raw_date = str(msg.get('Date', ''))
         try:
             parsed = parsedate_to_datetime(raw_date)
@@ -115,7 +147,7 @@ class MessageIndex:
         refs = self._ids(str(msg.get('References', '')))
         reply_ids = self._ids(str(msg.get('In-Reply-To', '')))
         recipients = ', '.join(str(value) for name in ('To', 'Cc', 'Delivered-To') for value in msg.get_all(name, ()))
-        return IndexedMessage(
+        item = IndexedMessage(
             entry.key,
             entry.relative_path,
             entry.size,
@@ -130,12 +162,14 @@ class MessageIndex:
             reply_ids[-1] if reply_ids else None,
             refs,
         )
+        return item, self._body(msg)
 
     def refresh(self) -> list[IndexedMessage]:
         disk = maildir.scan(self.maildir)
         cached = {item.key: item for item in self.messages()}
         with self.connection:
             for key in cached.keys() - disk.keys():
+                self.connection.execute('DELETE FROM message_fts WHERE key = ?', (key,))
                 self.connection.execute('DELETE FROM messages WHERE key = ?', (key,))
                 cached.pop(key)
             for key, entry in disk.items():
@@ -147,7 +181,7 @@ class MessageIndex:
                         )
                         cached[key] = replace(old, path=entry.relative_path, flags=entry.flags)
                     continue
-                item = self._parse(entry)
+                item, body = self._parse(entry)
                 self.connection.execute(
                     'INSERT OR REPLACE INTO messages VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
                     (
@@ -166,6 +200,8 @@ class MessageIndex:
                         json.dumps(item.references),
                     ),
                 )
+                self.connection.execute('DELETE FROM message_fts WHERE key = ?', (key,))
+                self.connection.execute('INSERT INTO message_fts VALUES (?,?)', (key, body))
                 cached[key] = item
         return list(cached.values())
 
@@ -186,5 +222,6 @@ class MessageIndex:
             raise KeyError(key)
         target = maildir.move(self.maildir, item.path, destination)
         with self.connection:
+            self.connection.execute('DELETE FROM message_fts WHERE key = ?', (key,))
             self.connection.execute('DELETE FROM messages WHERE key = ?', (key,))
         return target

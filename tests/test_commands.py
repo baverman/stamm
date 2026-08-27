@@ -5,6 +5,8 @@ from typing import Any, cast
 
 import pytest
 
+from stamm.index import MessageIndex
+from stamm.maildir import ensure_maildir
 from stamm.state import MaildirState, SearchState
 from stamm.tui import prompt
 from stamm.views.index import IndexView, _command_completer
@@ -16,6 +18,20 @@ def test_command_completer_completes_command_name() -> None:
 
 def test_command_completer_stops_at_arguments() -> None:
     assert _command_completer('search from:bob', 15) == []
+
+
+def test_command_completer_completes_reindex() -> None:
+    assert _command_completer('rei', 3) == [prompt.Completion('reindex ', 'reindex', accept=False)]
+
+
+def test_reindex_fts_command(tmp_path: Path) -> None:
+    ensure_maildir(tmp_path)
+    with MessageIndex(tmp_path) as index:
+        source = MaildirState([], 0, 0, tmp_path, index, set())
+        view = IndexView(source, cast(Any, None), cast(Any, None))
+
+        assert view._search('reindex fts') is None
+        assert view.notice == 'FTS index reconciled: 0 added, 0 removed'
 
 
 def test_search_action_uses_slash_and_prefills_current_query(monkeypatch: pytest.MonkeyPatch) -> None:

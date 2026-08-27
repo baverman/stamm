@@ -23,7 +23,7 @@ from .message import MessageView
 from .pager import PagerView
 from .parts import PartsView
 
-COMMANDS = ('search',)
+COMMANDS = ('reindex', 'search')
 COMMAND_HISTORY: list[str] = []
 MAILDIR_HISTORY: list[str] = []
 
@@ -173,20 +173,24 @@ class IndexView(MailActionsMixin, DefaultActionView):
     def _search(self, command: str) -> Transition | None:
         parts = command.split(maxsplit=1)
         name = parts[0] if parts else ''
+        if name == 'reindex':
+            if len(parts) != 2 or parts[1].strip() != 'fts':
+                self.notice = 'usage: reindex fts'
+                return None
+            added, removed = self.state.source_state.index.reindex_fts()
+            self.notice = f'FTS index reconciled: {added} added, {removed} removed'
+            return None
         if name != 'search':
             self.notice = f'unknown command: {name}'
             return None
         query = parts[1].strip() if len(parts) == 2 else ''
         try:
             terms = parse_query(query)
+            state = SearchState.create(self.state.source_state, query, terms)
         except ValueError as exc:
             self.notice = str(exc)
             return None
-        view = IndexView(
-            SearchState.create(self.state.source_state, query, terms),
-            self.mime,
-            self.open_maildir,
-        )
+        view = IndexView(state, self.mime, self.open_maildir)
         if isinstance(self.state, SearchState):
             return Transition.replace(view)
         return Transition.push(view)
