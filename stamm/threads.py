@@ -17,6 +17,8 @@ class Node:
 class ThreadRow:
     message: IndexedMessage
     depth: int
+    continuations: tuple[bool, ...]
+    last: bool
 
 
 def build_threads(messages: list[IndexedMessage]) -> list[ThreadRow]:
@@ -71,17 +73,34 @@ def build_threads(messages: list[IndexedMessage]) -> list[ThreadRow]:
         return max([own, *(freshness(child) for child in item.children)])
 
     roots.sort(key=freshness)
+
+    def visible_children(item: Node) -> list[Node]:
+        result: list[Node] = []
+        children = sorted(item.children, key=lambda child: child.message.timestamp if child.message else freshness(child))
+        for child in children:
+            if child.message:
+                result.append(child)
+            else:
+                result.extend(visible_children(child))
+        return result
+
+    visible_roots: list[Node] = []
+    for root in roots:
+        if root.message:
+            visible_roots.append(root)
+        else:
+            visible_roots.extend(visible_children(root))
+
     rows: list[ThreadRow] = []
 
-    def visit(item: Node, visible_depth: int) -> None:
-        next_depth = visible_depth
-        if item.message:
-            rows.append(ThreadRow(item.message, visible_depth))
-            next_depth += 1
-        item.children.sort(key=lambda child: child.message.timestamp if child.message else freshness(child))
-        for child in item.children:
-            visit(child, next_depth)
+    def visit(item: Node, depth: int, continuations: tuple[bool, ...], last: bool) -> None:
+        assert item.message is not None
+        rows.append(ThreadRow(item.message, depth, continuations, last))
+        children = visible_children(item)
+        child_continuations = continuations if depth == 0 else continuations + (not last,)
+        for index, child in enumerate(children):
+            visit(child, depth + 1, child_continuations, index == len(children) - 1)
 
-    for root in roots:
-        visit(root, 0)
+    for root in visible_roots:
+        visit(root, 0, (), True)
     return rows

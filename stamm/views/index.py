@@ -11,10 +11,12 @@ from typing import ClassVar
 
 from .. import compose, ui
 from ..config import config
+from ..config_model import ThreadConfig
 from ..message import parse_message, select_body
 from ..mime import MimeManager
 from ..search import parse_query
 from ..state import IndexState, SearchState
+from ..threads import ThreadRow
 from ..tui import keys, prompt, text
 from . import GLOBAL_ACTIONS, MAIL_ACTIONS, MOVE_ACTIONS, PAGE_ACTIONS, DefaultActionView, Transition, UIContext
 from .compose import ComposeView
@@ -57,6 +59,13 @@ def index_summary(selected: int, count: int) -> str:
 
 def status_with_delete_count(status: str, count: int) -> str:
     return f'{status} | {count} to delete' if count else status
+
+
+def thread_prefix(row: ThreadRow, symbols: ThreadConfig) -> str:
+    if row.depth == 0:
+        return ''
+    ancestors = ''.join(symbols.vertical if continued else symbols.indent for continued in row.continuations)
+    return ancestors + (symbols.last if row.last else symbols.branch)
 
 
 def maildir_completer(value: str, cursor: int) -> list[prompt.Completion]:
@@ -136,7 +145,7 @@ class IndexView(MailActionsMixin, DefaultActionView):
                 'date': ui.format_index_date(item.timestamp),
                 'flags': flags,
                 'from': ui.format_sender(item.sender),
-                'subject': '  ' * row.depth + item.subject.replace('\n', ' '),
+                'subject': thread_prefix(row, config.index.thread) + item.subject.replace('\n', ' '),
             }
             selected = start + y - 1 == self.state.selected
             selected_attr = theme.index.indicator if selected else 0

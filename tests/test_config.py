@@ -4,7 +4,7 @@ from pathlib import Path
 
 from stamm import views
 from stamm.config import load_config
-from stamm.config_model import ColorStyle
+from stamm.config_model import ColorStyle, ThreadConfig
 
 
 def test_nested_hooks_config_and_typed_defaults(tmp_path: Path) -> None:
@@ -24,6 +24,11 @@ def test_nested_hooks_config_and_typed_defaults(tmp_path: Path) -> None:
                 'pre_refresh = "sync {maildir}"',
                 '[index]',
                 'format = "{from:15} {subject:*}"',
+                '[index.thread]',
+                'vertical = "| "',
+                'branch = "+-"',
+                'last = "`-"',
+                'indent = "  "',
                 '[colors.index]',
                 'column_from = { fg = "green" }',
                 '[colors.message]',
@@ -43,4 +48,5 @@ def test_nested_hooks_config_and_typed_defaults(tmp_path: Path) -> None:
     assert config.colors.message.header == ColorStyle('cyan', None, ('bold',))
     assert config.colors.normal is None
     assert config.index.format == '{from:15} {subject:*}'
+    assert config.index.thread == ThreadConfig('| ', '+-', '`-', '  ')
     assert config.keys == {'index': {'^N': 'down'}}

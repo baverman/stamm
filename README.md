@@ -12,6 +12,16 @@ format = "{date:12} {flags:4} {sender:20}  {subject:*}"
 
 Available fields are `date`, `flags`, `sender`, and `subject`. A numeric width is fixed; `*` uses the remaining width. Fields can be reordered or omitted.
 
+Thread branches use Unicode line-drawing characters by default. They can be replaced, including with ASCII or empty strings:
+
+```toml
+[index.thread]
+vertical = "| "
+branch = "+-"
+last = "`-"
+indent = "  "
+```
+
 
 ## Key bindings
 

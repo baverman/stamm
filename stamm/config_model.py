@@ -147,8 +147,17 @@ def index_format(value: object) -> str:
 
 
 @dataclass(frozen=True)
+class ThreadConfig:
+    vertical: str = field(str, default='│ ', required=False)
+    branch: str = field(str, default='├─', required=False)
+    last: str = field(str, default='└─', required=False)
+    indent: str = field(str, default='  ', required=False)
+
+
+@dataclass(frozen=True)
 class IndexConfig:
     format: str = field(index_format, default='{date:12} {flags:4} {from:25}  {subject:*}', required=False)
+    thread: ThreadConfig = field(ThreadConfig, default=ThreadConfig(), required=False)
 
 
 @dataclass(frozen=True)
