@@ -262,15 +262,17 @@ class IndexView(MailActionsMixin, DefaultActionView):
                 if not command:
                     raise ValueError('command is empty')
                 text.status(context.screen, 'running pre-refresh hook...', context.theme.status)
-                process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-                output, _ = process.communicate()
+                process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                output, err = process.communicate()
             except (OSError, ValueError) as exc:
                 PagerView('Pre-refresh hook failed', text.span_lines(str(exc))).run(context)
             else:
-                if output:
+                if err:
                     PagerView(
                         'Pre-refresh hook output',
-                        text.span_lines(output.decode('utf-8', errors='replace')),
+                        text.span_lines(
+                            output.decode('utf-8', errors='replace') + '\n' + err.decode('utf-8', errors='replace')
+                        ),
                     ).run(context)
         self.state.source_state.refresh()
         self.notice = 'refreshed'
