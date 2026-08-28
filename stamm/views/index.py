@@ -155,8 +155,8 @@ class IndexView(MailActionsMixin, DefaultActionView):
                 x += column_width
         count = len(self.state.rows)
         summary = _index_summary(self.state.selected, count)
-        status = _status_with_delete_count(
-            self.notice or summary,
+        status = self.notice or _status_with_delete_count(
+            summary,
             len(self.state.source_state.pending_delete),
         )
         text.status(screen, status, theme.status)
@@ -192,8 +192,13 @@ class IndexView(MailActionsMixin, DefaultActionView):
         name = parts[0] if parts else ''
         if name == 'reindex':
             target = parts[1].strip() if len(parts) == 2 else ''
-            if target not in ('fts', 'fts-full'):
-                self.notice = 'usage: reindex fts|fts-full'
+            if target not in ('full', 'fts', 'fts-full'):
+                self.notice = 'usage: reindex full|fts|fts-full'
+                return None
+            if target == 'full':
+                indexed = self.state.source_state.index.reindex(progress)
+                self.state.reload()
+                self.notice = f'Index rebuilt: {indexed} indexed'
                 return None
             indexed, removed = self.state.source_state.index.reindex_fts(full=target == 'fts-full', progress=progress)
             action = 'rebuilt' if target == 'fts-full' else 'reconciled'
@@ -377,8 +382,10 @@ class IndexView(MailActionsMixin, DefaultActionView):
         if value is None:
             return None
 
+        progress_label = 'Indexing' if value.split() == ['reindex', 'full'] else 'FTS indexing'
+
         def progress(processed: int, total: int) -> None:
-            text.status(context.screen, f'FTS indexing: {processed}/{total}', context.theme.status)
+            text.status(context.screen, f'{progress_label}: {processed}/{total}', context.theme.status)
 
         return self._search(value, progress)
 

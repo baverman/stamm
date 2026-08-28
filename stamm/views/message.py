@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from email.message import EmailMessage
 from typing import ClassVar
 
+from ..message import normalize_header
 from ..mime import MimeManager
 from ..state import IndexState
 from ..theme import MessageTheme
@@ -50,20 +51,22 @@ class MessageView(MailActionsMixin, DefaultActionView):
 
     def _pager_lines(self, theme: MessageTheme) -> text.TextLines:
         spans: list[text.TextSpan] = []
-        headers = list(self.message.raw_items())
-        if not self.show_all_headers:
+        if self.show_all_headers:
+            headers = list(self.message.raw_items())
+        else:
+            decoded = [(name, normalize_header(value)) for name, value in self.message.items()]
             wanted = ('date', 'from', 'to', 'cc', 'subject')
             headers = [
                 header
                 for wanted_name in wanted
-                if (header := next((item for item in headers if item[0].lower() == wanted_name), None))
+                if (header := next((item for item in decoded if item[0].lower() == wanted_name), None))
             ]
         for name, value in headers:
             try:
                 attr = getattr(theme, 'header_' + name.lower())
             except AttributeError:
                 attr = theme.header
-            lines = value.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+            lines = str(value).replace('\r\n', '\n').replace('\r', '\n').split('\n')
             header_text = f'{name}: {lines[0]}\n' + ''.join(f'    {line.lstrip()}\n' for line in lines[1:])
             spans.append(text.span(header_text, attr))
         spans.extend((text.span('\n'), text.span(self.body)))
@@ -73,7 +76,8 @@ class MessageView(MailActionsMixin, DefaultActionView):
         window = context.screen
         window.erase()
         height, width = window.getmaxyx()
-        text.put(window, 0, 0, self.message.get('Subject', '').ljust(width), width, context.theme.header)
+        subject = normalize_header(self.message.get('Subject', ''))
+        text.put(window, 0, 0, subject.ljust(width), width, context.theme.header)
         if not self.pager.lines:
             self.pager.lines = self._pager_lines(context.theme.message)
         notice = self.notice

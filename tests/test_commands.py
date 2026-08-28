@@ -39,6 +39,32 @@ def test_reindex_fts_command(tmp_path: Path) -> None:
         assert view.notice == 'FTS index rebuilt: 0 indexed, 0 removed'
 
 
+def test_reindex_full_rebuilds_message_index(tmp_path: Path) -> None:
+    ensure_maildir(tmp_path)
+    store(
+        tmp_path,
+        b'Subject: =?UTF-8?B?0KPQstC10LTQvtC80LvQtdC90LjQtSDQv9C+INC30LDQutCw0LfRgyA2OQ==?='
+        b'=?UTF-8?B?MzkwMDAxMTkxDQo=?=\r\n\r\nbody',
+    )
+    with MessageIndex(tmp_path) as index:
+        source = MaildirState([], 0, 0, tmp_path, index, set())
+        source.load_rows(index.refresh())
+        with index.connection:
+            index.connection.execute("UPDATE messages SET subject='stale'")
+            index.connection.execute("UPDATE message_fts SET body='stale'")
+        source.load_rows(index.refresh(force=True))
+        view = IndexView(source, cast(Any, None), cast(Any, None))
+        progress: list[tuple[int, int]] = []
+
+        assert view._search('reindex full', lambda done, total: progress.append((done, total))) is None
+
+        assert view.notice == 'Index rebuilt: 1 indexed'
+        assert source.rows[0].message.subject == 'Уведомление по заказу 69390001191'
+        assert index.search_body('stale') == {source.rows[0].message.key}
+        assert index.search_body('body') == set()
+        assert progress == [(1, 1)]
+
+
 def test_unmark_deleted_command_only_affects_visible_messages(tmp_path: Path) -> None:
     ensure_maildir(tmp_path)
     for subject in ('visible one', 'visible two', 'hidden'):

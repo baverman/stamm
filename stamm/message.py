@@ -8,6 +8,10 @@ from pathlib import Path
 from .config import Config
 
 
+def normalize_header(value: object) -> str:
+    return ' '.join(str(value).splitlines())
+
+
 def parse_message(path: Path) -> EmailMessage:
     with path.open('rb') as stream:
         return BytesParser(policy=policy.default).parse(stream)

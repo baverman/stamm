@@ -15,7 +15,7 @@ from pathlib import Path
 from time import monotonic
 
 from . import maildir
-from .message import payload_text
+from .message import normalize_header, payload_text
 
 INITIAL_MESSAGE_LIMIT = 100
 
@@ -187,7 +187,7 @@ class MessageIndex:
             result.append(parser.text())
         return '\n'.join(result)
 
-    def _parse(self, entry: maildir.MaildirEntry) -> tuple[IndexedMessage, str]:
+    def _parse(self, entry: maildir.MaildirEntry, *, include_body: bool = True) -> tuple[IndexedMessage, str]:
         with entry.path.open('rb') as stream:
             msg = BytesParser(policy=policy.default).parse(stream)
         raw_date = str(msg.get('Date', ''))
@@ -202,7 +202,9 @@ class MessageIndex:
             shown_date = datetime.fromtimestamp(timestamp).astimezone().strftime('%Y-%m-%d %H:%M')
         refs = self._ids(str(msg.get('References', '')))
         reply_ids = self._ids(str(msg.get('In-Reply-To', '')))
-        recipients = ', '.join(str(value) for name in ('To', 'Cc', 'Delivered-To') for value in msg.get_all(name, ()))
+        recipients = ', '.join(
+            normalize_header(value) for name in ('To', 'Cc', 'Delivered-To') for value in msg.get_all(name, ())
+        )
         item = IndexedMessage(
             entry.key,
             entry.relative_path,
@@ -211,14 +213,59 @@ class MessageIndex:
             entry.flags,
             shown_date,
             timestamp,
-            str(msg.get('From', '')),
+            normalize_header(msg.get('From', '')),
             recipients,
-            str(msg.get('Subject', '')),
+            normalize_header(msg.get('Subject', '')),
             str(msg.get('Message-ID')) if msg.get('Message-ID') else None,
             reply_ids[-1] if reply_ids else None,
             refs,
         )
-        return item, self._body(msg)
+        return item, self._body(msg) if include_body else ''
+
+    def _store_message(self, item: IndexedMessage) -> None:
+        self.connection.execute(
+            'INSERT OR REPLACE INTO messages VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+            (
+                item.key,
+                item.path,
+                item.size,
+                item.mtime_ns,
+                item.flags,
+                item.date,
+                item.timestamp,
+                item.sender,
+                item.recipient,
+                item.subject,
+                item.message_id,
+                item.in_reply_to,
+                json.dumps(item.references),
+            ),
+        )
+
+    def _store(self, item: IndexedMessage, body: str) -> None:
+        self._store_message(item)
+        self.connection.execute('DELETE FROM message_fts WHERE key = ?', (item.key,))
+        self.connection.execute('INSERT INTO message_fts VALUES (?,?)', (item.key, body))
+
+    def reindex(self, progress: Callable[[int, int], None] | None = None) -> int:
+        disk = maildir.scan(self.maildir)
+        total = len(disk)
+        indexed: dict[str, IndexedMessage] = {}
+        next_progress = monotonic() + 0.1
+        self._message_cache = None
+        with self.connection:
+            self.connection.execute('DELETE FROM messages')
+            for processed, (key, entry) in enumerate(disk.items(), 1):
+                item, _body = self._parse(entry, include_body=False)
+                self._store_message(item)
+                indexed[key] = item
+                if progress is not None:
+                    now = monotonic()
+                    if now >= next_progress or processed == total:
+                        progress(processed, total)
+                        next_progress = now + 0.1
+        self._message_cache = indexed
+        return total
 
     def refresh(self, *, force: bool = False) -> list[IndexedMessage]:
         disk = maildir.scan(self.maildir)
@@ -240,26 +287,7 @@ class MessageIndex:
                         cached[key] = replace(old, path=entry.relative_path, flags=entry.flags)
                     continue
                 item, body = self._parse(entry)
-                self.connection.execute(
-                    'INSERT OR REPLACE INTO messages VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
-                    (
-                        item.key,
-                        item.path,
-                        item.size,
-                        item.mtime_ns,
-                        item.flags,
-                        item.date,
-                        item.timestamp,
-                        item.sender,
-                        item.recipient,
-                        item.subject,
-                        item.message_id,
-                        item.in_reply_to,
-                        json.dumps(item.references),
-                    ),
-                )
-                self.connection.execute('DELETE FROM message_fts WHERE key = ?', (key,))
-                self.connection.execute('INSERT INTO message_fts VALUES (?,?)', (key, body))
+                self._store(item, body)
                 cached[key] = item
         self._message_cache = cached
         return list(cached.values())
