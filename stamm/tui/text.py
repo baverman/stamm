@@ -58,20 +58,20 @@ def span_lines(value: str, attr: int = 0) -> TextLines:
 
 
 @cache
-def _character_width(character: str) -> int:
+def get_character_width(character: str) -> int:
     if unicodedata.combining(character):
         return 0
     return 2 if unicodedata.east_asian_width(character) in ('W', 'F') else 1
 
 
 def text_width(value: str) -> int:
-    return sum(_character_width(character) for character in value)
+    return sum(get_character_width(character) for character in value)
 
 
 def fit_text(value: str, width: int) -> tuple[str, str, int]:
     used_width = 0
     for index, character in enumerate(value):
-        character_width = _character_width(character)
+        character_width = get_character_width(character)
         if used_width + character_width > width:
             return value[:index], value[index:], used_width
         used_width += character_width

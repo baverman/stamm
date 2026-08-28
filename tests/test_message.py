@@ -37,11 +37,11 @@ def _view() -> MessageView:
 def test_toggle_headers_shows_raw_headers_without_raw_payloads() -> None:
     view = _view()
     view.pager.offset = 3
-    initial = '\n'.join(''.join(span.text for span in line) for line in view._pager_lines(MessageTheme()))
+    initial = '\n'.join(''.join(span.text for span in line) for line in view.pager_lines(MessageTheme()))
 
     view.on_toggle_headers(cast(Any, None))
 
-    expanded = '\n'.join(''.join(span.text for span in line) for line in view._pager_lines(MessageTheme()))
+    expanded = '\n'.join(''.join(span.text for span in line) for line in view.pager_lines(MessageTheme()))
     assert 'From: Лаборатория КДЛ <mo_uz@moscow.kdl-test.ru>' in initial
     assert 'Subject: Уведомление по заказу 69390001191' in initial
     assert '\r' not in initial
@@ -55,5 +55,5 @@ def test_toggle_headers_shows_raw_headers_without_raw_payloads() -> None:
 
     view.on_toggle_headers(cast(Any, None))
 
-    collapsed = '\n'.join(''.join(span.text for span in line) for line in view._pager_lines(MessageTheme()))
+    collapsed = '\n'.join(''.join(span.text for span in line) for line in view.pager_lines(MessageTheme()))
     assert collapsed == initial

@@ -66,7 +66,7 @@ def rename_flags(maildir: Path, relative_path: str, add: str = '', remove: str =
     return str(target.relative_to(maildir)), flags
 
 
-def _unique_name() -> str:
+def unique_name() -> str:
     return f'{time.time_ns()}.{os.getpid()}_{secrets.token_hex(6)}.{socket.gethostname()}'
 
 
@@ -80,13 +80,13 @@ def move(source_maildir: Path, relative_path: str, destination_maildir: Path) ->
     if target.exists():
         _, flags = split_name(source.name)
         suffix = f':2,{flags}' if ':2,' in source.name else ''
-        target = destination_maildir / subdirectory / f'{_unique_name()}{suffix}'
+        target = destination_maildir / subdirectory / f'{unique_name()}{suffix}'
     try:
         os.rename(source, target)
     except OSError as exc:
         if exc.errno != errno.EXDEV:
             raise
-        temporary = destination_maildir / 'tmp' / _unique_name()
+        temporary = destination_maildir / 'tmp' / unique_name()
         try:
             with source.open('rb') as input_stream, temporary.open('xb') as output_stream:
                 shutil.copyfileobj(input_stream, output_stream)
@@ -101,7 +101,7 @@ def move(source_maildir: Path, relative_path: str, destination_maildir: Path) ->
 
 def store(maildir: Path, content: bytes, *, flags: str = '', seen: bool = False) -> Path:
     ensure_maildir(maildir)
-    name = _unique_name()
+    name = unique_name()
     temporary = maildir / 'tmp' / name
     directory = 'cur' if seen or flags else 'new'
     final_name = f'{name}:2,{"".join(sorted(set(flags)))}' if directory == 'cur' else name

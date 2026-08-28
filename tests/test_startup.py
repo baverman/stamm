@@ -89,6 +89,6 @@ def test_reconcile_paints_index_before_scanning(monkeypatch: pytest.MonkeyPatch)
     view = IndexView(state, dependency, dependency, reconcile=True)
     monkeypatch.setattr(view, 'draw', lambda _context: events.append(f'draw:{view.notice}'))
 
-    view._reconcile(context)
+    view.perform_reconcile(context)
 
     assert events == ['draw:indexing...', 'refresh', 'reconcile']

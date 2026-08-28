@@ -6,11 +6,11 @@ from .index import IndexedMessage
 
 
 @dataclass
-class _Node:
+class Node:
     identifier: str
     message: IndexedMessage | None = None
-    parent: _Node | None = None
-    children: list[_Node] = field(default_factory=list)
+    parent: Node | None = None
+    children: list[Node] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -20,12 +20,12 @@ class ThreadRow:
 
 
 def build_threads(messages: list[IndexedMessage]) -> list[ThreadRow]:
-    nodes: dict[str, _Node] = {}
-    anonymous: list[_Node] = []
-    current_nodes: list[_Node] = []
+    nodes: dict[str, Node] = {}
+    anonymous: list[Node] = []
+    current_nodes: list[Node] = []
 
-    def node(identifier: str) -> _Node:
-        return nodes.setdefault(identifier, _Node(identifier))
+    def node(identifier: str) -> Node:
+        return nodes.setdefault(identifier, Node(identifier))
 
     for index, message in enumerate(messages):
         if message.message_id:
@@ -35,17 +35,17 @@ def build_threads(messages: list[IndexedMessage]) -> list[ThreadRow]:
                 current.message = message
             else:
                 # A duplicate Message-ID must not hide a visible message.
-                current = _Node(f'duplicate:{index}', message)
+                current = Node(f'duplicate:{index}', message)
                 anonymous.append(current)
         else:
-            current = _Node(f'anonymous:{index}', message)
+            current = Node(f'anonymous:{index}', message)
             anonymous.append(current)
         current_nodes.append(current)
 
-    def link(parent: _Node, child: _Node) -> None:
+    def link(parent: Node, child: Node) -> None:
         if parent is child or child.parent is not None:
             return
-        ancestor: _Node | None = parent
+        ancestor: Node | None = parent
         while ancestor:
             if ancestor is child:
                 return
@@ -66,14 +66,14 @@ def build_threads(messages: list[IndexedMessage]) -> list[ThreadRow]:
     all_nodes = list(nodes.values()) + anonymous
     roots = [item for item in all_nodes if item.parent is None]
 
-    def freshness(item: _Node) -> float:
+    def freshness(item: Node) -> float:
         own = item.message.timestamp if item.message else float('-inf')
         return max([own, *(freshness(child) for child in item.children)])
 
     roots.sort(key=freshness)
     rows: list[ThreadRow] = []
 
-    def visit(item: _Node, visible_depth: int) -> None:
+    def visit(item: Node, visible_depth: int) -> None:
         next_depth = visible_depth
         if item.message:
             rows.append(ThreadRow(item.message, visible_depth))

@@ -25,7 +25,7 @@ class PartRow:
 
 
 @dataclass(frozen=True)
-class _OpenProcess:
+class OpenProcess:
     directory: tempfile.TemporaryDirectory[str]
     process: subprocess.Popen[bytes]
     output: Path
@@ -51,7 +51,7 @@ def part_rows(message: Message) -> list[PartRow]:
 class MimeManager:
     def __init__(self, config: Config):
         self.config = config
-        self._temporary: list[_OpenProcess] = []
+        self._temporary: list[OpenProcess] = []
 
     def rule(self, content_type: str) -> MimeRule | None:
         return next((rule for rule in self.config.mime if rule.matches(content_type)), None)
@@ -65,7 +65,7 @@ class MimeManager:
         return rule.open
 
     @staticmethod
-    def _run(
+    def run(
         command: str,
         content: bytes,
         temporary: Path | None = None,
@@ -120,7 +120,7 @@ class MimeManager:
         with tempfile.TemporaryDirectory(prefix='stamm-view-') as directory:
             path = Path(directory) / safe_filename(part)
             path.write_bytes(content)
-            result = self._run(rule.display, content, path)
+            result = self.run(rule.display, content, path)
             assert isinstance(result, subprocess.CompletedProcess)
             return result.stdout.decode('utf-8', errors='replace')
 
@@ -140,12 +140,12 @@ class MimeManager:
             except Exception:
                 logger.exception('failed to prepare images for HTML')
         with output.open('wb') as out:
-            process = self._run(command, content, path, detached=True, output=out)
+            process = self.run(command, content, path, detached=True, output=out)
         assert isinstance(process, subprocess.Popen)
-        self._temporary.append(_OpenProcess(directory, process, output, command))
+        self._temporary.append(OpenProcess(directory, process, output, command))
 
     def reap(self) -> None:
-        active: list[_OpenProcess] = []
+        active: list[OpenProcess] = []
         for entry in self._temporary:
             status = entry.process.poll()
             if status in (None, 0):

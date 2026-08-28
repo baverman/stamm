@@ -121,11 +121,11 @@ COLOR_ATTRIBUTES = {
 }
 
 
-def _color_index(value: str) -> int:
+def color_index(value: str) -> int:
     return int(value) if value.isdecimal() else COLOR_INDEXES[value]
 
 
-def _attributes(names: tuple[str, ...]) -> int:
+def attributes(names: tuple[str, ...]) -> int:
     result = 0
     for name in names:
         result |= COLOR_ATTRIBUTES[name]
@@ -146,12 +146,12 @@ def make_theme[T](theme_cls: type[T], colors: Any) -> T:
             raise RuntimeError(f'cannot initialize terminal colors: {exc}') from exc
 
     def fit_color(value: str) -> int:
-        index = _color_index(value)
+        index = color_index(value)
         return index % curses.COLORS if index >= 0 else index
 
     def alloc_color(style: Style) -> int:
         nonlocal next_pair
-        result = _attributes(style.attrs or ())
+        result = attributes(style.attrs or ())
         if not has_colors:
             return result
         colors_key = (fit_color(style.fg or 'default'), fit_color(style.bg or 'default'))

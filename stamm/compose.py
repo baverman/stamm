@@ -35,7 +35,7 @@ class ComposeData:
     references: tuple[str, ...] = ()
 
 
-def _valid_addresses(value: str) -> bool:
+def valid_addresses(value: str) -> bool:
     if not value.strip():
         return True
     parsed = getaddresses([value])
@@ -94,12 +94,12 @@ def format_buffer(data: ComposeData) -> str:
 
 def validate(data: ComposeData) -> list[str]:
     errors: list[str] = []
-    if not data.sender or not _valid_addresses(data.sender) or len(getaddresses([data.sender])) != 1:
+    if not data.sender or not valid_addresses(data.sender) or len(getaddresses([data.sender])) != 1:
         errors.append('From must contain one valid address')
     if not any((data.to.strip(), data.cc.strip(), data.bcc.strip())):
         errors.append('at least one recipient is required')
     for name, value in (('To', data.to), ('Cc', data.cc), ('Bcc', data.bcc)):
-        if not _valid_addresses(value):
+        if not valid_addresses(value):
             errors.append(f'{name} contains an invalid address')
     for attachment in data.attachments:
         if not attachment.path.is_file():
@@ -147,7 +147,7 @@ def new(config: Config) -> ComposeData:
     return ComposeData(sender=config.identities[0])
 
 
-def _reply_sender(message: Message, config: Config) -> str:
+def reply_sender(message: Message, config: Config) -> str:
     fields = [str(message.get(name, '')) for name in ('To', 'Cc') if message.get(name)]
     recipients = {address.lower() for _, address in getaddresses(fields)}
     for identity in config.identities:
@@ -156,12 +156,12 @@ def _reply_sender(message: Message, config: Config) -> str:
     return ''
 
 
-def _reply_subject(subject: str) -> str:
+def reply_subject(subject: str) -> str:
     return subject if subject.lower().startswith('re:') else f'Re: {subject}'
 
 
 def reply(message: Message, rendered_body: str, config: Config, *, all_recipients: bool = False) -> ComposeData:
-    sender = _reply_sender(message, config)
+    sender = reply_sender(message, config)
     original_sender = str(message.get('Reply-To') or message.get('From', ''))
     to = [original_sender]
     cc: list[str] = []
@@ -186,7 +186,7 @@ def reply(message: Message, rendered_body: str, config: Config, *, all_recipient
         ', '.join(to),
         ', '.join(cc),
         '',
-        _reply_subject(str(message.get('Subject', ''))),
+        reply_subject(str(message.get('Subject', ''))),
         [],
         f'\nOn {date}, {author} wrote:\n{quote(rendered_body)}',
         message_id,

@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from stamm.ui import format_index_date, format_sender, viewport_start
-from stamm.views.index import _maildir_completer
+from stamm.views.index import maildir_completer
 
 
 def test_recent_date_uses_time() -> None:
@@ -63,7 +63,7 @@ def test_maildir_completer_only_returns_directories(tmp_path: Path) -> None:
     (tmp_path / 'Invoice').mkdir()
     (tmp_path / 'index').write_text('', encoding='utf-8')
 
-    choices = _maildir_completer(str(tmp_path / 'In'), len(str(tmp_path / 'In')))
+    choices = maildir_completer(str(tmp_path / 'In'), len(str(tmp_path / 'In')))
 
     assert [choice.value for choice in choices] == [str(maildir) + '/', str(tmp_path / 'Invoice') + '/']
     assert choices[0].label == 'Inbox/ [Maildir]'

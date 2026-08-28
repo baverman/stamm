@@ -108,13 +108,13 @@ class SearchState(IndexState):
     expression: SearchExpression
 
     @staticmethod
-    def _matching_rows(source: MaildirState, expression: SearchExpression) -> list[ThreadRow]:
+    def matching_rows(source: MaildirState, expression: SearchExpression) -> list[ThreadRow]:
         body_matches = {query: source.index.search_body(query) for query in body_queries(expression)}
         return [row for row in source.rows if matches(row.message, expression, body_matches)]
 
     @classmethod
     def create(cls, source: MaildirState, query: str, expression: SearchExpression) -> SearchState:
-        rows = cls._matching_rows(source, expression)
+        rows = cls.matching_rows(source, expression)
         return cls(rows, max(0, len(rows) - 1), 0, source, query, expression)
 
     @property
@@ -127,7 +127,7 @@ class SearchState(IndexState):
 
     def rebuild(self) -> None:
         key = self.selected_message.key if self.rows else None
-        self.rows = self._matching_rows(self.source, self.expression)
+        self.rows = self.matching_rows(self.source, self.expression)
         if key:
             fallback = min(self.selected, max(0, len(self.rows) - 1))
             self.selected = next((i for i, row in enumerate(self.rows) if row.message.key == key), fallback)

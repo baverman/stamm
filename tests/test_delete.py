@@ -86,7 +86,7 @@ def test_mark_keeps_message_until_purge(tmp_path: Path) -> None:
     try:
         key = state.rows[0].message.key
 
-        view._mark_deleted()
+        view.mark_deleted()
         state.offset = 9
         other = tmp_path / 'other'
         ensure_maildir(other)

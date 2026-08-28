@@ -14,7 +14,7 @@ log = logging.getLogger(__name__)
 
 
 @cache
-def _named_keys() -> dict[str, tuple[Key, ...]]:
+def named_keys() -> dict[str, tuple[Key, ...]]:
     result: dict[str, tuple[Key, ...]] = {}
     for name in dir(curses):
         if not name.startswith('KEY_'):
@@ -52,7 +52,7 @@ def parse_key(specification: str, kind: str) -> tuple[Key, ...]:
             code -= ord('a') - ord('A')
         if ord('@') <= code <= ord('_'):
             return (chr(code & 0x1F),)
-    values = _named_keys().get(specification.upper())
+    values = named_keys().get(specification.upper())
     if values is None:
         log.warning(f'invalid or unavailable key name: {kind}/{specification}')
     return values or ()

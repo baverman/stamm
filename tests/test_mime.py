@@ -7,7 +7,7 @@ from pathlib import Path
 
 from stamm.config import Config, MimeRule
 from stamm.config_model import DEFAULT_COLORS, HooksConfig
-from stamm.mime import MimeManager, _OpenProcess
+from stamm.mime import MimeManager, OpenProcess
 
 
 def config(rules: tuple[MimeRule, ...] = ()) -> Config:
@@ -46,10 +46,10 @@ def test_successful_opener_keeps_temporary_file_until_manager_closes() -> None:
     output = Path(directory.name) / 'out'
     source.write_text('<p>content</p>', encoding='utf-8')
     with output.open('wb') as out:
-        process = manager._run('true', b'', source, detached=True, output=out)
+        process = manager.run('true', b'', source, detached=True, output=out)
     assert isinstance(process, subprocess.Popen)
     process.wait(timeout=5)
-    manager._temporary.append(_OpenProcess(directory, process, output, 'test opener'))
+    manager._temporary.append(OpenProcess(directory, process, output, 'test opener'))
 
     manager.reap()
     assert source.exists()

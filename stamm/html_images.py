@@ -16,16 +16,16 @@ _CID_REFERENCE = re.compile(rb'cid:([^\s\"\'<>\)]+)', re.IGNORECASE)
 
 def prepare_html_images(content: bytes, message: Message, directory: Path) -> bytes:
     images = [part for part in message.walk() if part.get_content_maintype() == 'image']
-    reserved = {name for part in images if (name := _source_name(part)) is not None}
+    reserved = {name for part in images if (name := source_name(part)) is not None}
     cid_filenames: dict[str, str] = {}
     generated = 0
 
     for part in images:
         try:
             original_filename = part.get_filename()
-            if original_filename is not None and not _is_safe_filename(original_filename):
+            if original_filename is not None and not is_safe_filename(original_filename):
                 continue
-            filename = _source_name(part)
+            filename = source_name(part)
             if filename is None:
                 generated += 1
                 extension = mimetypes.guess_extension(part.get_content_type()) or '.bin'
@@ -39,27 +39,27 @@ def prepare_html_images(content: bytes, message: Message, directory: Path) -> by
                 continue
             path.write_bytes(payload_bytes(part))
 
-            content_id = _content_id(part)
+            content_id = get_content_id(part)
             if content_id is not None:
                 cid_filenames[content_id.casefold()] = filename
         except Exception:
             logger.exception('failed to prepare HTML image')
 
-    return _rewrite_cid_references(content, cid_filenames)
+    return rewrite_cid_references(content, cid_filenames)
 
 
-def _source_name(part: Message) -> str | None:
+def source_name(part: Message) -> str | None:
     filename = part.get_filename()
-    if filename is not None and _is_safe_filename(filename):
+    if filename is not None and is_safe_filename(filename):
         return filename
 
     location = part.get('Content-Location')
-    if location is not None and _is_safe_filename(location):
+    if location is not None and is_safe_filename(location):
         return location
     return None
 
 
-def _is_safe_filename(filename: str) -> bool:
+def is_safe_filename(filename: str) -> bool:
     path = Path(filename)
     return (
         bool(filename)
@@ -70,7 +70,7 @@ def _is_safe_filename(filename: str) -> bool:
     )
 
 
-def _content_id(part: Message) -> str | None:
+def get_content_id(part: Message) -> str | None:
     value = part.get('Content-ID')
     if value is None:
         return None
@@ -80,7 +80,7 @@ def _content_id(part: Message) -> str | None:
     return value or None
 
 
-def _rewrite_cid_references(content: bytes, filenames: dict[str, str]) -> bytes:
+def rewrite_cid_references(content: bytes, filenames: dict[str, str]) -> bytes:
     def replace(match: re.Match[bytes]) -> bytes:
         try:
             content_id = unquote(match.group(1).decode('ascii')).casefold()

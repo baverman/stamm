@@ -50,7 +50,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS message_fts USING fts5(
 """
 
 
-class _HTMLTextParser(HTMLParser):
+class HTMLTextParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
         self.parts: list[str] = []
@@ -93,7 +93,7 @@ class MessageIndex:
         self.close()
 
     @staticmethod
-    def _from_row(row: sqlite3.Row) -> IndexedMessage:
+    def from_row(row: sqlite3.Row) -> IndexedMessage:
         refs = row['refs']
         return IndexedMessage(
             key=row['key'],
@@ -118,14 +118,14 @@ class MessageIndex:
             rows = self.connection.execute('SELECT * FROM messages')
         else:
             rows = self.connection.execute('SELECT * FROM messages ORDER BY timestamp DESC LIMIT ?', (limit,))
-        messages = [self._from_row(row) for row in rows]
+        messages = [self.from_row(row) for row in rows]
         if limit is None:
             self._message_cache = {item.key: item for item in messages}
         return messages
 
     def get(self, key: str) -> IndexedMessage | None:
         row = self.connection.execute('SELECT * FROM messages WHERE key = ?', (key,)).fetchone()
-        return self._from_row(row) if row else None
+        return self.from_row(row) if row else None
 
     def search_body(self, query: str) -> set[str]:
         try:
@@ -157,7 +157,7 @@ class MessageIndex:
                 path = self.maildir / item.path
                 with path.open('rb') as stream:
                     message = BytesParser(policy=policy.default).parse(stream)
-                self.connection.execute('INSERT INTO message_fts VALUES (?,?)', (item.key, self._body(message)))
+                self.connection.execute('INSERT INTO message_fts VALUES (?,?)', (item.key, self.body(message)))
                 if progress is not None:
                     now = monotonic()
                     if now >= next_progress or processed == total:
@@ -166,7 +166,7 @@ class MessageIndex:
         return len(targets), len(orphaned)
 
     @staticmethod
-    def _ids(value: str | None) -> tuple[str, ...]:
+    def ids(value: str | None) -> tuple[str, ...]:
         if not value:
             return ()
 
@@ -174,20 +174,20 @@ class MessageIndex:
         return tuple(found or value.split())
 
     @staticmethod
-    def _body(message: Message) -> str:
+    def body(message: Message) -> str:
         plain = [payload_text(part) for part in message.walk() if part.get_content_type() == 'text/plain']
         if plain:
             return '\n'.join(plain)
         html = [payload_text(part) for part in message.walk() if part.get_content_type() == 'text/html']
         result = []
         for content in html:
-            parser = _HTMLTextParser()
+            parser = HTMLTextParser()
             parser.feed(content)
             parser.close()
             result.append(parser.text())
         return '\n'.join(result)
 
-    def _parse(self, entry: maildir.MaildirEntry, *, include_body: bool = True) -> tuple[IndexedMessage, str]:
+    def parse(self, entry: maildir.MaildirEntry, *, include_body: bool = True) -> tuple[IndexedMessage, str]:
         with entry.path.open('rb') as stream:
             msg = BytesParser(policy=policy.default).parse(stream)
         raw_date = str(msg.get('Date', ''))
@@ -200,8 +200,8 @@ class MessageIndex:
         except (TypeError, ValueError, OverflowError):
             timestamp = entry.mtime_ns / 1_000_000_000
             shown_date = datetime.fromtimestamp(timestamp).astimezone().strftime('%Y-%m-%d %H:%M')
-        refs = self._ids(str(msg.get('References', '')))
-        reply_ids = self._ids(str(msg.get('In-Reply-To', '')))
+        refs = self.ids(str(msg.get('References', '')))
+        reply_ids = self.ids(str(msg.get('In-Reply-To', '')))
         recipients = ', '.join(
             normalize_header(value) for name in ('To', 'Cc', 'Delivered-To') for value in msg.get_all(name, ())
         )
@@ -220,9 +220,9 @@ class MessageIndex:
             reply_ids[-1] if reply_ids else None,
             refs,
         )
-        return item, self._body(msg) if include_body else ''
+        return item, self.body(msg) if include_body else ''
 
-    def _store_message(self, item: IndexedMessage) -> None:
+    def store_message(self, item: IndexedMessage) -> None:
         self.connection.execute(
             'INSERT OR REPLACE INTO messages VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
             (
@@ -242,8 +242,8 @@ class MessageIndex:
             ),
         )
 
-    def _store(self, item: IndexedMessage, body: str) -> None:
-        self._store_message(item)
+    def store(self, item: IndexedMessage, body: str) -> None:
+        self.store_message(item)
         self.connection.execute('DELETE FROM message_fts WHERE key = ?', (item.key,))
         self.connection.execute('INSERT INTO message_fts VALUES (?,?)', (item.key, body))
 
@@ -256,8 +256,8 @@ class MessageIndex:
         with self.connection:
             self.connection.execute('DELETE FROM messages')
             for processed, (key, entry) in enumerate(disk.items(), 1):
-                item, _body = self._parse(entry, include_body=False)
-                self._store_message(item)
+                item, _body = self.parse(entry, include_body=False)
+                self.store_message(item)
                 indexed[key] = item
                 if progress is not None:
                     now = monotonic()
@@ -286,8 +286,8 @@ class MessageIndex:
                         )
                         cached[key] = replace(old, path=entry.relative_path, flags=entry.flags)
                     continue
-                item, body = self._parse(entry)
-                self._store(item, body)
+                item, body = self.parse(entry)
+                self.store(item, body)
                 cached[key] = item
         self._message_cache = cached
         return list(cached.values())

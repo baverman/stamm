@@ -43,13 +43,13 @@ class MessageView(MailActionsMixin, DefaultActionView):
     def help_action_sets(self) -> tuple[tuple[str, keys.ActionSet], ...]:
         return super().help_action_sets() + ((PagerWidget.namespace, PagerWidget.actions),)
 
-    def _set_notice(self, notice: str, _is_sent: bool) -> None:
+    def set_notice(self, notice: str, _is_sent: bool) -> None:
         self.notice = notice
 
-    def _mail_action_message(self) -> tuple[EmailMessage, str, str]:
+    def mail_action_message(self) -> tuple[EmailMessage, str, str]:
         return self.message, self.body, self.key
 
-    def _pager_lines(self, theme: MessageTheme) -> text.TextLines:
+    def pager_lines(self, theme: MessageTheme) -> text.TextLines:
         spans: list[text.TextSpan] = []
         if self.show_all_headers:
             headers = list(self.message.raw_items())
@@ -79,7 +79,7 @@ class MessageView(MailActionsMixin, DefaultActionView):
         subject = normalize_header(self.message.get('Subject', ''))
         text.put(window, 0, 0, subject.ljust(width), width, context.theme.header)
         if not self.pager.lines:
-            self.pager.lines = self._pager_lines(context.theme.message)
+            self.pager.lines = self.pager_lines(context.theme.message)
         notice = self.notice
         self.notice = ''
         if height > 1:

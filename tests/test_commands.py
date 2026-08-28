@@ -11,20 +11,20 @@ from stamm.maildir import ensure_maildir, store
 from stamm.search import parse_query
 from stamm.state import MaildirState, SearchState
 from stamm.tui import prompt
-from stamm.views.index import IndexView, _command_completer
+from stamm.views.index import IndexView, command_completer
 
 
 def test_command_completer_completes_command_name() -> None:
-    assert _command_completer('se', 2) == [prompt.Completion('search ', 'search', accept=False)]
-    assert _command_completer('unm', 3) == [prompt.Completion('unmark_deleted ', 'unmark_deleted', accept=False)]
+    assert command_completer('se', 2) == [prompt.Completion('search ', 'search', accept=False)]
+    assert command_completer('unm', 3) == [prompt.Completion('unmark_deleted ', 'unmark_deleted', accept=False)]
 
 
 def test_command_completer_stops_at_arguments() -> None:
-    assert _command_completer('search from:bob', 15) == []
+    assert command_completer('search from:bob', 15) == []
 
 
 def test_command_completer_completes_reindex() -> None:
-    assert _command_completer('rei', 3) == [prompt.Completion('reindex ', 'reindex', accept=False)]
+    assert command_completer('rei', 3) == [prompt.Completion('reindex ', 'reindex', accept=False)]
 
 
 def test_reindex_fts_command(tmp_path: Path) -> None:
@@ -33,9 +33,9 @@ def test_reindex_fts_command(tmp_path: Path) -> None:
         source = MaildirState([], 0, 0, tmp_path, index, set())
         view = IndexView(source, cast(Any, None), cast(Any, None))
 
-        assert view._search('reindex fts') is None
+        assert view.search('reindex fts') is None
         assert view.notice == 'FTS index reconciled: 0 indexed, 0 removed'
-        assert view._search('reindex fts-full') is None
+        assert view.search('reindex fts-full') is None
         assert view.notice == 'FTS index rebuilt: 0 indexed, 0 removed'
 
 
@@ -56,7 +56,7 @@ def test_reindex_full_rebuilds_message_index(tmp_path: Path) -> None:
         view = IndexView(source, cast(Any, None), cast(Any, None))
         progress: list[tuple[int, int]] = []
 
-        assert view._search('reindex full', lambda done, total: progress.append((done, total))) is None
+        assert view.search('reindex full', lambda done, total: progress.append((done, total))) is None
 
         assert view.notice == 'Index rebuilt: 1 indexed'
         assert source.rows[0].message.subject == 'Уведомление по заказу 69390001191'
@@ -82,7 +82,7 @@ def test_unmark_deleted_command_only_affects_visible_messages(tmp_path: Path) ->
         view = IndexView(state, cast(Any, None), cast(Any, None))
         hidden_key = next(row.message.key for row in source.rows if row.message.subject == 'hidden')
 
-        assert view._search('unmark_deleted') is None
+        assert view.search('unmark_deleted') is None
 
         assert source.pending_delete == {hidden_key}
         assert view.notice == '2 messages unmarked for deletion'
@@ -112,7 +112,7 @@ def test_search_from_search_view_replaces_current_search() -> None:
     search_view = IndexView(SearchState.create(source, 'old', parse_query('')), dependency, dependency)
     stack = [maildir_view, search_view]
 
-    change = search_view._search('search subject:new')
+    change = search_view.search('search subject:new')
     assert change is not None
     change.apply(stack)
 

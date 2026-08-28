@@ -44,7 +44,7 @@ class ComposeView:
         data = delivery.resume_draft(message, Path(workspace.name))
         return cls(data, on_finish, old_draft=old_draft, workspace=workspace)
 
-    def _finish(self, notice: str, is_sent: bool) -> None:
+    def finish(self, notice: str, is_sent: bool) -> None:
         self.on_finish(notice, is_sent)
 
     def run(self, context: UIContext) -> Transition:
@@ -62,7 +62,7 @@ class ComposeView:
                     curses.reset_prog_mode()
                     screen.refresh()
                 if not changed and not edited:
-                    self._finish('', False)
+                    self.finish('', False)
                     return Transition.close()
                 edited = edited or changed
                 errors = compose.validate(data)
@@ -83,7 +83,7 @@ class ComposeView:
                 if action == 'edit':
                     continue
                 if action in (None, 'discard'):
-                    self._finish('', False)
+                    self.finish('', False)
                     return Transition.close()
                 is_sent = False
                 try:
@@ -97,7 +97,7 @@ class ComposeView:
                         notice = 'message sent'
                     if self.old_draft:
                         self.old_draft.unlink(missing_ok=True)
-                    self._finish(notice, is_sent)
+                    self.finish(notice, is_sent)
                     return Transition.close()
                 except (OSError, delivery.DeliveryError) as exc:
                     PagerView('Delivery failed', text.span_lines(str(exc))).run(context)
@@ -114,11 +114,11 @@ class ComposeView:
                             delivery.save_draft(data, config)
                             if self.old_draft:
                                 self.old_draft.unlink(missing_ok=True)
-                            self._finish('draft saved', False)
+                            self.finish('draft saved', False)
                         except OSError as draft_exc:
-                            self._finish(str(draft_exc), False)
+                            self.finish(str(draft_exc), False)
                         return Transition.close()
-                    self._finish(str(exc), is_sent)
+                    self.finish(str(exc), is_sent)
                     return Transition.close()
         finally:
             if self.workspace:

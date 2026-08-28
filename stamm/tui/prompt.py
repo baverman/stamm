@@ -40,7 +40,7 @@ def path_completer(value: str, cursor: int) -> list[Completion]:
     return result
 
 
-def _add_history(history: list[str] | None, value: str, limit: int = 100) -> None:
+def add_history(history: list[str] | None, value: str, limit: int = 100) -> None:
     if history is None or not value:
         return
     history[:] = [entry for entry in history if entry != value]
@@ -142,7 +142,7 @@ class PromptView(View[BaseContext, str | None]):
                             selected = 0
                             refresh_choices()
                             continue
-                    _add_history(self.history, value)
+                    add_history(self.history, value)
                     return value
                 if key in ('\x1b', 27):
                     if choices:
