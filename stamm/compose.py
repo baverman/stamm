@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from email.message import Message
 from email.utils import getaddresses, parseaddr
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 from .config import Config
 from .message import header_block, payload_bytes, quote
@@ -33,6 +34,65 @@ class ComposeData:
     body: str = ''
     in_reply_to: str | None = None
     references: tuple[str, ...] = ()
+
+
+class MailtoError(ValueError):
+    pass
+
+
+def _unquote_mailto(value: str) -> str:
+    index = 0
+    while (index := value.find('%', index)) >= 0:
+        if index + 2 >= len(value) or not all(
+            char in '0123456789abcdefABCDEF' for char in value[index + 1 : index + 3]
+        ):
+            raise MailtoError('invalid percent escape in mailto URI')
+        index += 3
+    try:
+        return unquote(value, encoding='utf-8', errors='strict')
+    except UnicodeDecodeError as exc:
+        raise MailtoError('invalid UTF-8 in mailto URI') from exc
+
+
+def from_mailto(uri: str, config: Config) -> ComposeData:
+    if any(ord(char) <= 0x20 or ord(char) == 0x7F for char in uri):
+        raise MailtoError('invalid character in mailto URI')
+    try:
+        parsed = urlsplit(uri)
+    except ValueError as exc:
+        raise MailtoError(f'invalid mailto URI: {exc}') from exc
+    if parsed.scheme.lower() != 'mailto' or parsed.netloc or parsed.fragment:
+        raise MailtoError('invalid mailto URI')
+
+    values: dict[str, list[str]] = {'to': [], 'cc': [], 'bcc': [], 'subject': [], 'body': []}
+    path = _unquote_mailto(parsed.path)
+    if path:
+        values['to'].append(path)
+    if parsed.query:
+        for field in parsed.query.split('&'):
+            name, separator, value = field.partition('=')
+            if not separator:
+                raise MailtoError('invalid mailto query field')
+            name = _unquote_mailto(name).lower()
+            value = _unquote_mailto(value)
+            if name in values:
+                values[name].append(value)
+
+    for name in ('to', 'cc', 'bcc'):
+        if any(not valid_addresses(value) for value in values[name]):
+            raise MailtoError(f'invalid {name} address in mailto URI')
+    for name in ('to', 'cc', 'bcc', 'subject'):
+        if any('\r' in value or '\n' in value for value in values[name]):
+            raise MailtoError(f'invalid {name} field in mailto URI')
+
+    return ComposeData(
+        sender=config.identities[0],
+        to=', '.join(filter(None, values['to'])),
+        cc=', '.join(filter(None, values['cc'])),
+        bcc=', '.join(filter(None, values['bcc'])),
+        subject=values['subject'][-1] if values['subject'] else '',
+        body=values['body'][-1] if values['body'] else '',
+    )
 
 
 def valid_addresses(value: str) -> bool:

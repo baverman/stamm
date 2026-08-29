@@ -36,6 +36,42 @@ def config(tmp_path: Path) -> Config:
     )
 
 
+def test_mailto_populates_compose_fields(config: Config) -> None:
+    data = compose.from_mailto(
+        'mailto:first+tag@example.com?to=second%40example.com&cc=copy%40example.com'
+        '&bcc=hidden%40example.com&subject=Hello%20there&body=First%20line%0ASecond%20line'
+        '&attach=%2Ftmp%2Fignored',
+        config,
+    )
+
+    assert data == ComposeData(
+        sender='sender@example.com',
+        to='first+tag@example.com, second@example.com',
+        cc='copy@example.com',
+        bcc='hidden@example.com',
+        subject='Hello there',
+        body='First line\nSecond line',
+    )
+
+
+@pytest.mark.parametrize(
+    'uri',
+    (
+        'https://example.com',
+        'mailto://example.com/recipient',
+        'mailto:recipient@example.com#fragment',
+        'mailto:recipient@example.com?subject',
+        'mailto:recipient%ZZexample.com',
+        'mailto:not-an-address',
+        'mailto:recipient@example.com?subject=hello%0Aworse',
+        'mailto:recipient@example.com?subject=raw space',
+    ),
+)
+def test_invalid_mailto_is_rejected(config: Config, uri: str) -> None:
+    with pytest.raises(compose.MailtoError):
+        compose.from_mailto(uri, config)
+
+
 def test_empty_attachment_field_is_included_and_ignored_when_parsed() -> None:
     text = compose.format_buffer(ComposeData(sender='sender@example.com'))
 

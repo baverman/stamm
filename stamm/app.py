@@ -3,6 +3,7 @@ from __future__ import annotations
 import curses
 from pathlib import Path
 
+from .compose import ComposeData
 from .config import config
 from .message import parse_message
 from .mime import MimeManager
@@ -10,6 +11,7 @@ from .state import MaildirState
 from .tui import text
 from .tui.choice import ChoiceView
 from .views import Transition, UIContext, View
+from .views.compose import ComposeView
 from .views.index import IndexView
 from .views.message import MessageView, render_body
 from .views.pager import PagerView
@@ -38,6 +40,9 @@ class App:
 
     def open_maildir(self, path: Path) -> None:
         self.stack.append(self.maildir_view(path))
+
+    def open_composer(self, data: ComposeData) -> None:
+        self.stack.append(ComposeView(data, lambda _notice, _is_sent: None))
 
     def open_message(self, path: Path) -> None:
         path = path.resolve()

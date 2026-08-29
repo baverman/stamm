@@ -7,7 +7,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import views
+from . import compose, views
 from .app import App
 from .config import ConfigError, config, load_config, set_config
 from .theme import Theme
@@ -32,16 +32,19 @@ def configure_logging() -> None:
 def main(argv: list[str] | None = None) -> int:
     configure_logging()
     parser = argparse.ArgumentParser(prog='stamm', description='terminal Maildir client')
-    parser.add_argument('path', nargs='?', type=Path)
+    parser.add_argument('target', nargs='?')
     args = parser.parse_args(argv)
     try:
         views.setup()
         set_config(load_config())
-        selected = args.path if args.path is not None else config.spool
-        if not selected.exists():
-            raise FileNotFoundError(f'path does not exist: {selected}')
-        if not selected.is_file() and not selected.is_dir():
-            raise OSError(f'path is not a regular file or directory: {selected}')
+        is_mailto = args.target is not None and args.target.lower().startswith('mailto:')
+        initial = compose.from_mailto(args.target, config) if is_mailto else None
+        selected = None if is_mailto else Path(args.target) if args.target is not None else config.spool
+        if selected is not None:
+            if not selected.exists():
+                raise FileNotFoundError(f'path does not exist: {selected}')
+            if not selected.is_file() and not selected.is_dir():
+                raise OSError(f'path is not a regular file or directory: {selected}')
 
         def run(screen: curses.window) -> None:
             curses.set_escdelay(100)
@@ -52,14 +55,16 @@ def main(argv: list[str] | None = None) -> int:
             context = views.UIContext(screen, theme)
 
             app = App(context)
-            if selected.is_file():
+            if initial is not None:
+                app.open_composer(initial)
+            elif selected is not None and selected.is_file():
                 app.open_message(selected)
-            else:
+            elif selected is not None:
                 app.open_maildir(selected)
             app.run()
 
         curses.wrapper(run)
-    except (ConfigError, OSError, RuntimeError) as exc:
+    except (compose.MailtoError, ConfigError, OSError, RuntimeError) as exc:
         print(f'stamm: {exc}', file=sys.stderr)
         return 1
     return 0
