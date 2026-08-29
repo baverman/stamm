@@ -32,12 +32,16 @@ def configure_logging() -> None:
 def main(argv: list[str] | None = None) -> int:
     configure_logging()
     parser = argparse.ArgumentParser(prog='stamm', description='terminal Maildir client')
-    parser.add_argument('maildir', nargs='?', type=Path)
+    parser.add_argument('path', nargs='?', type=Path)
     args = parser.parse_args(argv)
     try:
         views.setup()
         set_config(load_config())
-        selected = args.maildir if args.maildir is not None else config.spool
+        selected = args.path if args.path is not None else config.spool
+        if not selected.exists():
+            raise FileNotFoundError(f'path does not exist: {selected}')
+        if not selected.is_file() and not selected.is_dir():
+            raise OSError(f'path is not a regular file or directory: {selected}')
 
         def run(screen: curses.window) -> None:
             curses.set_escdelay(100)
@@ -48,7 +52,10 @@ def main(argv: list[str] | None = None) -> int:
             context = views.UIContext(screen, theme)
 
             app = App(context)
-            app.open_maildir(selected)
+            if selected.is_file():
+                app.open_message(selected)
+            else:
+                app.open_maildir(selected)
             app.run()
 
         curses.wrapper(run)

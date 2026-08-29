@@ -76,7 +76,9 @@ def build_threads(messages: list[IndexedMessage]) -> list[ThreadRow]:
 
     def visible_children(item: Node) -> list[Node]:
         result: list[Node] = []
-        children = sorted(item.children, key=lambda child: child.message.timestamp if child.message else freshness(child))
+        children = sorted(
+            item.children, key=lambda child: child.message.timestamp if child.message else freshness(child)
+        )
         for child in children:
             if child.message:
                 result.append(child)

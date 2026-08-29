@@ -12,7 +12,7 @@ from typing import ClassVar
 from .. import compose, ui
 from ..config import config
 from ..config_model import ThreadConfig
-from ..message import parse_message, select_body
+from ..message import parse_message
 from ..mime import MimeManager
 from ..search import parse_query
 from ..state import IndexState, SearchState
@@ -21,7 +21,7 @@ from ..tui import keys, prompt, text
 from . import GLOBAL_ACTIONS, MAIL_ACTIONS, MOVE_ACTIONS, PAGE_ACTIONS, DefaultActionView, Transition, UIContext
 from .compose import ComposeView
 from .mail_actions import MailActionsMixin
-from .message import MessageView
+from .message import MessageView, render_body
 from .pager import PagerView
 from .parts import PartsView
 
@@ -174,20 +174,11 @@ class IndexView(MailActionsMixin, DefaultActionView):
     def message(self) -> EmailMessage:
         return parse_message(self.state.source_state.path / self.state.selected_message.path)
 
-    def render_body(self, message: EmailMessage) -> str:
-        part = select_body(message, config)
-        if part is None:
-            return '[No displayable body. Press v to inspect MIME parts.]'
-        try:
-            return self.mime.display(part)
-        except Exception as exc:
-            return f'[Cannot display {part.get_content_type()}: {exc}]'
-
     def mail_action_message(self) -> tuple[EmailMessage, str, str] | None:
         if not self.state.rows:
             return None
         message = self.message()
-        return message, self.render_body(message), self.state.selected_message.key
+        return message, render_body(message, self.mime), self.state.selected_message.key
 
     def reload(self) -> None:
         self.state.reload()
@@ -354,7 +345,7 @@ class IndexView(MailActionsMixin, DefaultActionView):
             item = self.state.source_state.index.set_flags(item.key, add='S')
             self.state.reload()
         message = parse_message(self.state.source_state.path / item.path)
-        body = self.render_body(message)
+        body = render_body(message, self.mime)
         return Transition.push(
             MessageView(
                 message,
@@ -362,6 +353,7 @@ class IndexView(MailActionsMixin, DefaultActionView):
                 self.mime,
                 self.state,
                 item.key,
+                self.state.source_state.path / item.path,
             )
         )
 

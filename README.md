@@ -2,6 +2,8 @@
 
 A fast, mutt-like terminal client for Maildir folders. Stamm requires Python 3.13 or later and uses only the Python standard library at runtime.
 
+Pass a Maildir path to open its index, or pass any message file to open that message directly. Closing a directly opened message exits Stamm.
+
 
 ## Index format
 

@@ -4,12 +4,14 @@ import curses
 from pathlib import Path
 
 from .config import config
+from .message import parse_message
 from .mime import MimeManager
 from .state import MaildirState
 from .tui import text
 from .tui.choice import ChoiceView
 from .views import Transition, UIContext, View
 from .views.index import IndexView
+from .views.message import MessageView, render_body
 from .views.pager import PagerView
 
 
@@ -36,6 +38,11 @@ class App:
 
     def open_maildir(self, path: Path) -> None:
         self.stack.append(self.maildir_view(path))
+
+    def open_message(self, path: Path) -> None:
+        path = path.resolve()
+        message = parse_message(path)
+        self.stack.append(MessageView(message, render_body(message, self.mime), self.mime, None, str(path), path))
 
     def confirm_exit(self) -> bool:
         count = sum(len(state.pending_delete) for state in self.maildirs.values())

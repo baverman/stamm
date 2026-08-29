@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from email.message import EmailMessage
+from pathlib import Path
 from typing import ClassVar
 
-from ..message import normalize_header
+from ..config import config
+from ..message import normalize_header, select_body
 from ..mime import MimeManager
 from ..state import IndexState
 from ..theme import MessageTheme
@@ -13,6 +15,16 @@ from . import GLOBAL_ACTIONS, MAIL_ACTIONS, ContextCache, DefaultActionView, Tra
 from .mail_actions import MailActionsMixin
 from .pager import PagerWidget
 from .parts import PartsView
+
+
+def render_body(message: EmailMessage, mime: MimeManager) -> str:
+    part = select_body(message, config)
+    if part is None:
+        return '[No displayable body. Press v to inspect MIME parts.]'
+    try:
+        return mime.display(part)
+    except Exception as exc:
+        return f'[Cannot display {part.get_content_type()}: {exc}]'
 
 
 @dataclass
@@ -30,8 +42,9 @@ class MessageView(MailActionsMixin, DefaultActionView):
     message: EmailMessage
     body: str
     mime: MimeManager
-    state: IndexState
+    state: IndexState | None
     key: str
+    path: Path
     notice: str = field(default='', init=False)
     show_all_headers: bool = field(default=False, init=False)
     pager: PagerWidget = field(init=False)
@@ -76,8 +89,8 @@ class MessageView(MailActionsMixin, DefaultActionView):
         window = context.screen
         window.erase()
         height, width = window.getmaxyx()
-        subject = normalize_header(self.message.get('Subject', ''))
-        text.put(window, 0, 0, subject.ljust(width), width, context.theme.header)
+        title = str(self.path)
+        text.put(window, 0, 0, title.ljust(width), width, context.theme.header)
         if not self.pager.lines:
             self.pager.lines = self.pager_lines(context.theme.message)
         notice = self.notice

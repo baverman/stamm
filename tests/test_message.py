@@ -3,10 +3,14 @@ from __future__ import annotations
 from email import policy
 from email.message import EmailMessage
 from email.parser import BytesParser
+from pathlib import Path
 from typing import Any, cast
 
-from stamm.theme import MessageTheme
+from stamm.app import App
+from stamm.theme import MessageTheme, Theme
+from stamm.views import UIContext
 from stamm.views.message import MessageView
+from tests.tui.fakes import Window
 
 
 def _view() -> MessageView:
@@ -31,7 +35,40 @@ def _view() -> MessageView:
         dependency,
         dependency,
         'key',
+        Path('/mail/cur/message'),
     )
+
+
+def test_message_view_header_shows_message_path() -> None:
+    view = _view()
+    window = Window(height=1, width=80)
+
+    view.draw(UIContext(window.as_curses(), Theme()))
+
+    assert window.writes[0][2].strip() == '/mail/cur/message'
+
+
+def test_app_opens_standalone_message_as_only_view(tmp_path: Path) -> None:
+    path = tmp_path / 'message.eml'
+    message = EmailMessage()
+    message.set_content('standalone body')
+    path.write_bytes(message.as_bytes())
+
+    class Mime:
+        def display(self, part: EmailMessage) -> str:
+            return str(part.get_content())
+
+    app = object.__new__(App)
+    app.mime = cast(Any, Mime())
+    app.stack = []
+
+    app.open_message(path)
+
+    assert len(app.stack) == 1
+    view = cast(MessageView, app.stack[0])
+    assert view.path == path.resolve()
+    assert view.state is None
+    assert view.body == 'standalone body\n'
 
 
 def test_toggle_headers_shows_raw_headers_without_raw_payloads() -> None:

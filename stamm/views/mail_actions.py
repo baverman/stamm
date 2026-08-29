@@ -10,7 +10,7 @@ from .compose import ComposeView
 
 
 class MailActionsMixin:
-    state: IndexState
+    state: IndexState | None
 
     def mail_action_message(self) -> tuple[EmailMessage, str, str] | None:
         raise NotImplementedError
@@ -19,7 +19,7 @@ class MailActionsMixin:
         raise NotImplementedError
 
     def reply_finished(self, key: str, notice: str, is_sent: bool) -> None:
-        if is_sent:
+        if is_sent and self.state is not None:
             try:
                 self.state.source_state.mark_replied(key)
                 self.state.reload()
