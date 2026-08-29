@@ -33,22 +33,28 @@ def test_compile_merges_and_unbinds() -> None:
     bindings = keys.compile_bindings(
         'view',
         {'up': ('k',), 'down': ('j', '^D')},
-        {'j': '', '^N': 'down'},
+        {'j': '', '^N': keys.Binding('down', {'amount': 2})},
     )
 
-    assert bindings == {'k': 'up', '\x04': 'down', '\x0e': 'down'}
+    assert bindings == {
+        'k': keys.Binding('up'),
+        '\x04': keys.Binding('down'),
+        '\x0e': keys.Binding('down', {'amount': 2}),
+    }
 
 
 def test_describe_bindings_shows_effective_keys_by_action() -> None:
     descriptions = keys.describe_bindings(
         'view',
         {'down': ('j', 'DOWN'), 'up': ('k',), 'help': ('?',)},
-        {'j': 'up', 'DOWN': '', '^N': 'down', '?': ''},
+        {'j': 'up', 'DOWN': '', '^N': keys.Binding('down', {'amount': 2}), '?': ''},
     )
 
     assert descriptions == [('^N', 'down'), ('j, k', 'up')]
 
 
 def test_resolve_returns_none_for_unbound_event() -> None:
-    assert keys.resolve({'j': 'down'}, 'j') == 'down'
-    assert keys.resolve({'j': 'down'}, curses.KEY_UP) is None
+    down = keys.Binding('down')
+
+    assert keys.resolve({'j': down}, 'j') == down
+    assert keys.resolve({'j': down}, curses.KEY_UP) is None

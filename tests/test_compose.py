@@ -12,7 +12,7 @@ import stamm.views.compose as compose_view_module
 from stamm import compose, delivery
 from stamm.compose import ComposeData
 from stamm.config import Config, set_config
-from stamm.config_model import DEFAULT_COLORS, HooksConfig
+from stamm.config_model import DEFAULT_COLORS
 from stamm.views import UIContext
 from stamm.views.compose import ComposeView
 
@@ -28,7 +28,6 @@ def config(tmp_path: Path) -> Config:
         editor='editor',
         sendmail='sendmail',
         identities=('sender@example.com',),
-        hooks=HooksConfig(None),
         auto_view=(),
         alternative_order=('text/plain', 'text/html'),
         signatures={},

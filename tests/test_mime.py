@@ -6,7 +6,7 @@ from email.message import EmailMessage
 from pathlib import Path
 
 from stamm.config import Config, MimeRule
-from stamm.config_model import DEFAULT_COLORS, HooksConfig
+from stamm.config_model import DEFAULT_COLORS
 from stamm.mime import MimeManager, OpenProcess
 
 
@@ -20,7 +20,6 @@ def config(rules: tuple[MimeRule, ...] = ()) -> Config:
         editor='true',
         sendmail='true',
         identities=('sender@example.com',),
-        hooks=HooksConfig(None),
         auto_view=(),
         alternative_order=('text/plain', 'text/html'),
         signatures={},

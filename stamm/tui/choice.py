@@ -19,7 +19,7 @@ class ChoiceView(View[BaseContext, str | None]):
     prompt: str
     choices: Mapping[str, str]
     primary: str
-    overrides: Mapping[str, str] | None = None
+    overrides: Mapping[str, keys.BindingSpec] | None = None
 
     def run(self, context: BaseContext) -> str | None:
         if self.primary not in self.choices.values():
@@ -28,10 +28,10 @@ class ChoiceView(View[BaseContext, str | None]):
         text.status(screen, f'{self.prompt} [{"/".join(self.choices)}]', context.theme.status)
         bindings = keys.compile_bindings(self.namespace, self.actions, self.overrides or {})
         while True:
-            action, ch = keys.read(screen, bindings)
-            if action == 'accept':
+            binding, ch = keys.read(screen, bindings)
+            if binding is not None and binding.action == 'accept':
                 return self.primary
-            if action == 'cancel':
+            if binding is not None and binding.action == 'cancel':
                 return None
             if isinstance(ch, str) and ch in self.choices:
                 return self.choices[ch]

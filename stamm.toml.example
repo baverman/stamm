@@ -10,12 +10,13 @@ identities = ["User <user@example.com>"]
 [index]
 format = "{date:12} {flags:4} {sender:20}  {subject:*}"
 
-# Key tables override defaults with key = action entries. An empty action unbinds a key.
+# Key tables override defaults. Object entries pass modifiers to their action.
 [keys.index]
 "^N" = "down"
 "^P" = "up"
 PAGEUP = "pageup"
 PAGEDOWN = "pagedown"
+R = { action = "refresh", before = "mbsync {maildir}" }
 q = ""
 
 [keys.message]

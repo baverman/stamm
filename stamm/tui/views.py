@@ -56,7 +56,7 @@ class ActionSpec(Protocol):
     actions: ClassVar[keys.ActionSet]
 
 
-ActionResolver = Callable[[keys.Key], str | None]
+ActionResolver = Callable[[keys.Key], keys.Binding | None]
 
 
 class ActionHandler[C: Context[Any], T](ActionSpec):
@@ -71,13 +71,14 @@ class ActionHandler[C: Context[Any], T](ActionSpec):
     @abstractproperty
     def action_resolver(self) -> ActionResolver: ...
 
-    def handle(self, context: C, action: str) -> T | None:
-        return cast(Callable[[C], T | None], getattr(self, f'on_{action}'))(context)
+    def handle(self, context: C, binding: keys.Binding) -> T | None:
+        handler = cast(Callable[..., T | None], getattr(self, f'on_{binding.action}'))
+        return handler(context, **binding.modifiers)
 
     def handle_key(self, context: C, ch: keys.Key) -> T | None:
-        action = self.action_resolver(ch)
-        if action:
-            return self.handle(context, action)
+        binding = self.action_resolver(ch)
+        if binding:
+            return self.handle(context, binding)
         else:
             return self.on_unknown(context, ch)
 

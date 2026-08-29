@@ -253,23 +253,28 @@ class IndexView(MailActionsMixin, DefaultActionView):
         self.state.source_state.mark_deleted(self.state.selected_message.key)
         self.state.select_next()
 
-    def manual_refresh(self, context: UIContext) -> None:
-        if hook := config.hooks.pre_refresh:
+    def manual_refresh(self, context: UIContext, before: str | None = None) -> None:
+        if before is not None:
             try:
-                command = [
-                    argument.replace('{maildir}', str(self.state.source_state.path)) for argument in shlex.split(hook)
-                ]
-                if not command:
+                if not isinstance(before, str):
+                    raise ValueError('before must be a string')
+                command = before.replace('{maildir}', shlex.quote(str(self.state.source_state.path)))
+                if not command.strip():
                     raise ValueError('command is empty')
-                text.status(context.screen, 'running pre-refresh hook...', context.theme.status)
-                process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                text.status(context.screen, 'running refresh command...', context.theme.status)
+                process = subprocess.Popen(
+                    command,
+                    shell=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
                 output, err = process.communicate()
             except (OSError, ValueError) as exc:
-                PagerView('Pre-refresh hook failed', text.span_lines(str(exc))).run(context)
+                PagerView('Refresh command failed', text.span_lines(str(exc))).run(context)
             else:
                 if err:
                     PagerView(
-                        'Pre-refresh hook output',
+                        'Refresh command output',
                         text.span_lines(
                             output.decode('utf-8', errors='replace') + '\n' + err.decode('utf-8', errors='replace')
                         ),
@@ -371,9 +376,9 @@ class IndexView(MailActionsMixin, DefaultActionView):
         except Exception as exc:
             self.notice = str(exc)
 
-    def on_refresh(self, context: UIContext) -> None:
+    def on_refresh(self, context: UIContext, *, before: str | None = None) -> None:
         if self.state is self.state.source_state:
-            self.manual_refresh(context)
+            self.manual_refresh(context, before)
 
     def prompt_command(self, context: UIContext, initial: str = '') -> Transition | None:
         value = prompt.PromptView(

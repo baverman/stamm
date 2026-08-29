@@ -3,11 +3,21 @@ from __future__ import annotations
 import curses
 import logging
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 
 from .compat import cache
 
 Key = str | int
-Bindings = dict[Key, str]
+
+
+@dataclass(frozen=True)
+class Binding:
+    action: str
+    modifiers: Mapping[str, object] = field(default_factory=dict)
+
+
+BindingSpec = str | Binding
+Bindings = dict[Key, Binding]
 ActionSet = dict[str, tuple[str, ...]]
 
 log = logging.getLogger(__name__)
@@ -58,22 +68,27 @@ def parse_key(specification: str, kind: str) -> tuple[Key, ...]:
     return values or ()
 
 
-def compile_bindings(namespace: str, actions: Mapping[str, tuple[str, ...]], overrides: Mapping[str, str]) -> Bindings:
+def compile_bindings(
+    namespace: str,
+    actions: Mapping[str, tuple[str, ...]],
+    overrides: Mapping[str, BindingSpec],
+) -> Bindings:
     configured: Bindings = {}
     removed: set[Key] = set()
-    for source_key, action in overrides.items():
-        if action and action not in actions:
+    for source_key, specification in overrides.items():
+        binding = Binding(specification) if isinstance(specification, str) else specification
+        if binding.action and binding.action not in actions:
             continue
 
         values = parse_key(source_key, 'config')
-        if action:
+        if binding.action:
             for key in values:
-                configured[key] = action
+                configured[key] = binding
         else:
             removed.update(values)
 
     defaults = {
-        key: action
+        key: Binding(action)
         for action, skeys in actions.items()
         for skey in skeys
         for key in parse_key(skey, 'app')
@@ -84,7 +99,7 @@ def compile_bindings(namespace: str, actions: Mapping[str, tuple[str, ...]], ove
 
 
 def describe_binding_sets(
-    action_sets: Sequence[tuple[str, Mapping[str, tuple[str, ...]], Mapping[str, str]]],
+    action_sets: Sequence[tuple[str, Mapping[str, tuple[str, ...]], Mapping[str, BindingSpec]]],
 ) -> list[tuple[str, str]]:
     layers = [
         (actions, overrides, compile_bindings(namespace, actions, overrides))
@@ -92,14 +107,18 @@ def describe_binding_sets(
     ]
     bindings: Bindings = {}
     for _actions, _overrides, layer_bindings in layers:
-        for key, action in layer_bindings.items():
-            bindings.setdefault(key, action)
+        for key, binding in layer_bindings.items():
+            bindings.setdefault(key, binding)
 
     action_order = dict.fromkeys(action for actions, _overrides, _bindings in layers for action in actions)
     specifications: dict[str, list[str]] = {action: [] for action in action_order}
     represented: set[Key] = set()
     for actions, overrides, _layer_bindings in layers:
-        candidates = [(specification, action) for specification, action in overrides.items() if action in actions]
+        candidates = [
+            (specification, binding.action if isinstance(binding, Binding) else binding)
+            for specification, binding in overrides.items()
+            if (binding.action if isinstance(binding, Binding) else binding) in actions
+        ]
         candidates.extend(
             (specification, action) for action, action_keys in actions.items() for specification in action_keys
         )
@@ -107,7 +126,7 @@ def describe_binding_sets(
             matching = {
                 key
                 for key in parse_key(specification, 'help')
-                if key not in represented and bindings.get(key) == action
+                if key not in represented and (resolved := bindings.get(key)) is not None and resolved.action == action
             }
             if matching:
                 specifications[action].append(specification)
@@ -118,15 +137,15 @@ def describe_binding_sets(
 def describe_bindings(
     namespace: str,
     actions: Mapping[str, tuple[str, ...]],
-    overrides: Mapping[str, str],
+    overrides: Mapping[str, BindingSpec],
 ) -> list[tuple[str, str]]:
     return describe_binding_sets(((namespace, actions, overrides),))
 
 
-def resolve(bindings: Mapping[Key, str], ch: Key) -> str | None:
+def resolve(bindings: Mapping[Key, Binding], ch: Key) -> Binding | None:
     return bindings.get(ch)
 
 
-def read(window: curses.window, bindings: Mapping[Key, str]) -> tuple[str | None, Key]:
+def read(window: curses.window, bindings: Mapping[Key, Binding]) -> tuple[Binding | None, Key]:
     ch = window.get_wch()
     return resolve(bindings, ch), ch

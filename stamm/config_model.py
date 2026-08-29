@@ -11,6 +11,7 @@ from typing import Any, Callable, TypeVar
 
 from .schema import Typ, as_kv, as_list, field, optfield
 from .theme import Theme
+from .tui import keys
 from .tui import theme as tui_theme
 
 T = TypeVar('T')
@@ -46,19 +47,29 @@ def as_tuple(typ: Typ[T]) -> Callable[[object], tuple[T, ...]]:
     return inner
 
 
-def key_bindings(value: object) -> dict[str, dict[str, str]]:
-    result: dict[str, dict[str, str]] = {}
-    for namespace, bindings in as_kv(as_kv(str))(value).items():
+def key_binding(value: object) -> keys.Binding:
+    if isinstance(value, str):
+        return keys.Binding(value)
+    modifiers = as_kv(lambda item: item)(value)
+    if 'action' not in modifiers:
+        raise ValueError('action is required')
+    action = str(modifiers.pop('action'))
+    return keys.Binding(action, modifiers)
+
+
+def key_bindings(value: object) -> dict[str, dict[str, keys.Binding]]:
+    result: dict[str, dict[str, keys.Binding]] = {}
+    for namespace, bindings in as_kv(as_kv(key_binding))(value).items():
         actions = known_actions.get(namespace)
         if actions is None:
             log.warning('keys.%s: unknown namespace', namespace)
             continue
-        valid: dict[str, str] = {}
-        for source_key, action in bindings.items():
-            if action and action not in actions:
-                log.warning('keys.%s.%s = %r: unknown action', namespace, source_key, action)
+        valid: dict[str, keys.Binding] = {}
+        for source_key, binding in bindings.items():
+            if binding.action and binding.action not in actions:
+                log.warning('keys.%s.%s = %r: unknown action', namespace, source_key, binding.action)
                 continue
-            valid[source_key] = action
+            valid[source_key] = binding
         result[namespace] = valid
     return result
 
@@ -103,14 +114,6 @@ class MimeRule:
 
     def matches(self, content_type: str) -> bool:
         return fnmatch.fnmatchcase(content_type.lower(), self.type.lower())
-
-
-@dataclass(frozen=True)
-class HooksConfig:
-    pre_refresh: str | None = optfield(str)
-
-
-DEFAULT_HOOKS = HooksConfig(None)
 
 
 INDEX_FIELDS = frozenset({'date', 'flags', 'from', 'subject'})
@@ -170,14 +173,13 @@ class Config:
     editor: str = field(str)
     sendmail: str = field(str)
     identities: tuple[str, ...] = field(identities)
-    hooks: HooksConfig = field(HooksConfig, default=DEFAULT_HOOKS, required=False)
     auto_view: tuple[str, ...] = field(as_tuple(str), default=(), required=False)
     alternative_order: tuple[str, ...] = field(as_tuple(str), default=('text/plain', 'text/html'), required=False)
     signatures: dict[str, Path] = field(as_kv(Path), default_factory=dict, required=False)
     mime: tuple[MimeRule, ...] = field(as_tuple(MimeRule), default=(), required=False)
     colors: ColorConfig = field(ColorConfig, default=DEFAULT_COLORS, required=False)
     index: IndexConfig = field(IndexConfig, default=IndexConfig(), required=False)
-    keys: dict[str, dict[str, str]] = field(key_bindings, default_factory=dict, required=False)
+    keys: dict[str, dict[str, keys.Binding]] = field(key_bindings, default_factory=dict, required=False)
 
     @property
     def identity_addresses(self) -> tuple[str, ...]:
